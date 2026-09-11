@@ -1,24 +1,153 @@
 """
-Database initialization and seed data populator for Corporate Performance Management System (PMS)
+Database connection and initialization module supporting both PostgreSQL (Production on Render/Supabase)
+and SQLite (Local development).
 """
 
-import sqlite3
 import os
-from typing import Dict, Any, List
-from models import CREATE_TABLES_SQL, UserRole, KRASection, AppraisalStatus
+import sqlite3
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "pms.db")
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+# Standard SQL table creation statements compatible with SQLite and PostgreSQL
+CREATE_TABLES_SQL_SQLITE = """
+CREATE TABLE IF NOT EXISTS departments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    code TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    role TEXT NOT NULL,
+    designation TEXT NOT NULL,
+    department_id INTEGER,
+    manager_id INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (department_id) REFERENCES departments(id),
+    FOREIGN KEY (manager_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS kras (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    year INTEGER NOT NULL,
+    section TEXT NOT NULL,
+    lever_name TEXT NOT NULL,
+    description TEXT,
+    metric_unit TEXT NOT NULL,
+    target_value REAL NOT NULL,
+    actual_outcome REAL DEFAULT 0.0,
+    weightage_percent REAL NOT NULL,
+    parent_kra_id INTEGER,
+    self_rating_percent REAL DEFAULT 0.0,
+    manager_rating_percent REAL DEFAULT 0.0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (parent_kra_id) REFERENCES kras(id)
+);
+
+CREATE TABLE IF NOT EXISTS appraisals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    year INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'DRAFT',
+    present_year_score REAL DEFAULT 0.0,
+    upcoming_year_score REAL DEFAULT 0.0,
+    composite_score REAL DEFAULT 0.0,
+    performance_band TEXT DEFAULT 'Not Rated',
+    grade TEXT DEFAULT 'N/A',
+    self_comments TEXT,
+    manager_comments TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    UNIQUE(user_id, year)
+);
+"""
+
+CREATE_TABLES_SQL_PG = """
+CREATE TABLE IF NOT EXISTS departments (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    code VARCHAR(50) NOT NULL UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    role VARCHAR(50) NOT NULL,
+    designation VARCHAR(255) NOT NULL,
+    department_id INTEGER REFERENCES departments(id),
+    manager_id INTEGER REFERENCES users(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS kras (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    year INTEGER NOT NULL,
+    section VARCHAR(50) NOT NULL,
+    lever_name VARCHAR(255) NOT NULL,
+    description TEXT,
+    metric_unit VARCHAR(50) NOT NULL,
+    target_value DOUBLE PRECISION NOT NULL,
+    actual_outcome DOUBLE PRECISION DEFAULT 0.0,
+    weightage_percent DOUBLE PRECISION NOT NULL,
+    parent_kra_id INTEGER REFERENCES kras(id),
+    self_rating_percent DOUBLE PRECISION DEFAULT 0.0,
+    manager_rating_percent DOUBLE PRECISION DEFAULT 0.0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS appraisals (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    year INTEGER NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'DRAFT',
+    present_year_score DOUBLE PRECISION DEFAULT 0.0,
+    upcoming_year_score DOUBLE PRECISION DEFAULT 0.0,
+    composite_score DOUBLE PRECISION DEFAULT 0.0,
+    performance_band VARCHAR(100) DEFAULT 'Not Rated',
+    grade VARCHAR(10) DEFAULT 'N/A',
+    self_comments TEXT,
+    manager_comments TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, year)
+);
+"""
+
+def is_postgres():
+    return DATABASE_URL and (DATABASE_URL.startswith("postgresql://") or DATABASE_URL.startswith("postgres://"))
 
 def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    if is_postgres():
+        import psycopg2
+        from psycopg2.extras import RealDictCursor
+        # Fix URI if it starts with postgres:// (Heroku/Render format)
+        uri = DATABASE_URL
+        if uri.startswith("postgres://"):
+            uri = uri.replace("postgres://", "postgresql://", 1)
+        conn = psycopg2.connect(uri, cursor_factory=RealDictCursor)
+        return conn
+    else:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        return conn
 
 def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.executescript(CREATE_TABLES_SQL)
-    conn.commit()
+    
+    if is_postgres():
+        cursor.execute(CREATE_TABLES_SQL_PG)
+        conn.commit()
+    else:
+        cursor.executescript(CREATE_TABLES_SQL_SQLITE)
+        conn.commit()
+        
     conn.close()
     seed_data_if_empty()
 
@@ -26,15 +155,19 @@ def seed_data_if_empty():
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # Check if users exist
-    cursor.execute("SELECT COUNT(*) FROM users")
-    if cursor.fetchone()[0] > 0:
+    if is_postgres():
+        cursor.execute("SELECT COUNT(*) FROM users")
+        count = cursor.fetchone()['count']
+    else:
+        cursor.execute("SELECT COUNT(*) FROM users")
+        count = cursor.fetchone()[0]
+
+    if count > 0:
         conn.close()
         return
 
     print("Seeding initial corporate hierarchy and 70/30 KRAs...")
 
-    # 1. Insert Departments
     departments = [
         ("Executive Management", "EXEC"),
         ("Global Operations", "OPS"),
@@ -42,126 +175,76 @@ def seed_data_if_empty():
         ("Engineering & Technology", "ENG"),
         ("Supply Chain & Logistics", "SCM")
     ]
-    cursor.executemany("INSERT INTO departments (name, code) VALUES (?, ?)", departments)
+    
+    if is_postgres():
+        for name, code in departments:
+            cursor.execute("INSERT INTO departments (name, code) VALUES (%s, %s) ON CONFLICT DO NOTHING", (name, code))
+        conn.commit()
+    else:
+        cursor.executemany("INSERT INTO departments (name, code) VALUES (?, ?)", departments)
+        conn.commit()
 
-    dept_map = {row[1]: idx + 1 for idx, row in enumerate(departments)}
+    dept_map = {"EXEC": 1, "OPS": 2, "FIN": 3, "ENG": 4, "SCM": 5}
 
-    # 2. Insert Users (Hierarchy: ADMIN -> MD -> GM -> HOD -> MANAGER -> SUPERVISOR -> EMPLOYEE)
     users_data = [
-        # (name, email, role, designation, dept_code, manager_email)
-        ("System Administrator", "admin@company.com", UserRole.ADMIN, "System Administrator", "EXEC", None),
-        ("Arthur Pendelton", "md@company.com", UserRole.MD, "Managing Director & CEO", "EXEC", None),
-        
-        # General Managers (GMs) reporting to MD
-        ("Elena Rostova", "gm.ops@company.com", UserRole.GM, "GM - Operations & Strategy", "OPS", "md@company.com"),
-        ("Marcus Vance", "gm.eng@company.com", UserRole.GM, "GM - Technology & Product", "ENG", "md@company.com"),
-        
-        # Heads of Department (HODs) reporting to GMs
-        ("Sophia Lin", "hod.fin@company.com", UserRole.HOD, "HOD - Corporate Finance & EVA", "FIN", "gm.ops@company.com"),
-        ("David Miller", "hod.eng@company.com", UserRole.HOD, "HOD - Enterprise Architecture", "ENG", "gm.eng@company.com"),
-        
-        # Managers reporting to HODs
-        ("Rachel Green", "mgr.ops@company.com", UserRole.MANAGER, "Manager - Operational Excellence", "OPS", "hod.fin@company.com"),
-        ("Kevin Wright", "mgr.dev@company.com", UserRole.MANAGER, "Manager - Software Development", "ENG", "hod.eng@company.com"),
-        
-        # Supervisors reporting to Managers
-        ("Carlos Mendez", "sup.ops@company.com", UserRole.SUPERVISOR, "Supervisor - Process Audit", "OPS", "mgr.ops@company.com"),
-        ("Anita Desai", "sup.dev@company.com", UserRole.SUPERVISOR, "Supervisor - Platform Engineering", "ENG", "mgr.dev@company.com"),
-        
-        # Employees reporting to Supervisors
-        ("John Doe", "emp.john@company.com", UserRole.EMPLOYEE, "Senior Process Analyst", "OPS", "sup.ops@company.com"),
-        ("Sarah Jenkins", "emp.sarah@company.com", UserRole.EMPLOYEE, "Full Stack Engineer", "ENG", "sup.dev@company.com"),
+        ("System Administrator", "admin@company.com", "ADMIN", "System Administrator", "EXEC", None),
+        ("Arthur Pendelton", "md@company.com", "MD", "Managing Director & CEO", "EXEC", None),
+        ("Elena Rostova", "gm.ops@company.com", "GM", "GM - Operations & Strategy", "OPS", "md@company.com"),
+        ("Marcus Vance", "gm.eng@company.com", "GM", "GM - Technology & Product", "ENG", "md@company.com"),
+        ("Sophia Lin", "hod.fin@company.com", "HOD", "HOD - Corporate Finance & EVA", "FIN", "gm.ops@company.com"),
+        ("David Miller", "hod.eng@company.com", "HOD", "HOD - Enterprise Architecture", "ENG", "gm.eng@company.com"),
+        ("Rachel Green", "mgr.ops@company.com", "MANAGER", "Manager - Operational Excellence", "OPS", "hod.fin@company.com"),
+        ("Kevin Wright", "mgr.dev@company.com", "MANAGER", "Manager - Software Development", "ENG", "hod.eng@company.com"),
+        ("Carlos Mendez", "sup.ops@company.com", "SUPERVISOR", "Supervisor - Process Audit", "OPS", "mgr.ops@company.com"),
+        ("Anita Desai", "sup.dev@company.com", "SUPERVISOR", "Supervisor - Platform Engineering", "ENG", "mgr.dev@company.com"),
+        ("John Doe", "emp.john@company.com", "EMPLOYEE", "Senior Process Analyst", "OPS", "sup.ops@company.com"),
+        ("Sarah Jenkins", "emp.sarah@company.com", "EMPLOYEE", "Full Stack Engineer", "ENG", "sup.dev@company.com"),
     ]
 
     user_id_map = {}
     for name, email, role, designation, dept_code, mgr_email in users_data:
         dept_id = dept_map.get(dept_code)
         mgr_id = user_id_map.get(mgr_email) if mgr_email else None
-        cursor.execute(
-            "INSERT INTO users (name, email, role, designation, department_id, manager_id) VALUES (?, ?, ?, ?, ?, ?)",
-            (name, email, role.value if hasattr(role, 'value') else role, designation, dept_id, mgr_id)
-        )
-        user_id_map[email] = cursor.lastrowid
+        
+        if is_postgres():
+            cursor.execute(
+                """INSERT INTO users (name, email, role, designation, department_id, manager_id)
+                   VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
+                (name, email, role, designation, dept_id, mgr_id)
+            )
+            inserted_id = cursor.fetchone()['id']
+            user_id_map[email] = inserted_id
+        else:
+            cursor.execute(
+                "INSERT INTO users (name, email, role, designation, department_id, manager_id) VALUES (?, ?, ?, ?, ?, ?)",
+                (name, email, role, designation, dept_id, mgr_id)
+            )
+            user_id_map[email] = cursor.lastrowid
 
-    # 3. Insert KRAs for Managing Director (MD), GMs, HODs, Managers, Supervisors, Employees
-    # Section A: Present Year EVA & KRAs (70% Weightage)
-    # Section B: Upcoming Year Objectives & Target Commitments (30% Weightage)
-    
     current_year = 2026
-
-    # Sample KRAs for MD (Arthur Pendelton)
     md_id = user_id_map["md@company.com"]
     md_kras = [
-        # Present Year (70%)
-        (md_id, current_year, KRASection.PRESENT_YEAR_70, "Group Economic Value Added (EVA)", "Deliver net positive operating profit after cost of capital", "USD Million", 15.0, 16.2, 40.0, None),
-        (md_id, current_year, KRASection.PRESENT_YEAR_70, "Annual Corporate EBITDA Growth", "Achieve target consolidated EBITDA margin growth", "%", 18.0, 19.5, 30.0, None),
-        (md_id, current_year, KRASection.PRESENT_YEAR_70, "Strategic Expansion & Market Share", "Expand operational footprint in key international regions", "% Share", 25.0, 24.0, 30.0, None),
-        # Upcoming Year (30%)
-        (md_id, current_year, KRASection.UPCOMING_YEAR_30, "Next-Gen AI & Automation Transformation", "Establish enterprise AI framework across core business units", "Completion %", 100.0, 90.0, 50.0, None),
-        (md_id, current_year, KRASection.UPCOMING_YEAR_30, "ESG & Net Zero Carbon Roadmap", "Deploy renewable energy & carbon offset protocols for 2027", "Milestones", 5.0, 5.0, 50.0, None),
+        (md_id, current_year, "PRESENT_YEAR_70", "Group Economic Value Added (EVA)", "Deliver net positive operating profit after cost of capital", "USD Million", 15.0, 16.2, 40.0, None),
+        (md_id, current_year, "PRESENT_YEAR_70", "Annual Corporate EBITDA Growth", "Achieve target consolidated EBITDA margin growth", "%", 18.0, 19.5, 30.0, None),
+        (md_id, current_year, "PRESENT_YEAR_70", "Strategic Expansion & Market Share", "Expand operational footprint in key international regions", "% Share", 25.0, 24.0, 30.0, None),
+        (md_id, current_year, "UPCOMING_YEAR_30", "Next-Gen AI & Automation Transformation", "Establish enterprise AI framework across core business units", "Completion %", 100.0, 90.0, 50.0, None),
+        (md_id, current_year, "UPCOMING_YEAR_30", "ESG & Net Zero Carbon Roadmap", "Deploy renewable energy & carbon offset protocols for 2027", "Milestones", 5.0, 5.0, 50.0, None),
     ]
 
     for kra in md_kras:
-        cursor.execute(
-            """INSERT INTO kras (user_id, year, section, lever_name, description, metric_unit, target_value, actual_outcome, weightage_percent, parent_kra_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (kra[0], kra[1], kra[2].value, kra[3], kra[4], kra[5], kra[6], kra[7], kra[8], kra[9])
-        )
-    md_eva_kra_id = 1 # Group EVA KRA ID
+        if is_postgres():
+            cursor.execute(
+                """INSERT INTO kras (user_id, year, section, lever_name, description, metric_unit, target_value, actual_outcome, weightage_percent, parent_kra_id)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                kra
+            )
+        else:
+            cursor.execute(
+                """INSERT INTO kras (user_id, year, section, lever_name, description, metric_unit, target_value, actual_outcome, weightage_percent, parent_kra_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                kra
+            )
 
-    # Sample KRAs for GM Operations (Elena Rostova) - Linked to MD EVA
-    gm_ops_id = user_id_map["gm.ops@company.com"]
-    gm_kras = [
-        # Present Year (70%)
-        (gm_ops_id, current_year, KRASection.PRESENT_YEAR_70, "Operational Cost Reduction & Capital Efficiency", "Optimize plant operating expenditures to boost overall EVA", "USD Million", 4.5, 4.8, 50.0, md_eva_kra_id),
-        (gm_ops_id, current_year, KRASection.PRESENT_YEAR_70, "Supply Chain Service Level Agreement (SLA)", "Maintain on-time delivery across global distribution networks", "% On-Time", 95.0, 96.2, 50.0, None),
-        # Upcoming Year (30%)
-        (gm_ops_id, current_year, KRASection.UPCOMING_YEAR_30, "Automated Logistics Hub Rollout", "Deploy Smart Warehouse IoT architecture in Region East", "% Readiness", 100.0, 85.0, 100.0, None),
-    ]
-    for kra in gm_kras:
-        cursor.execute(
-            """INSERT INTO kras (user_id, year, section, lever_name, description, metric_unit, target_value, actual_outcome, weightage_percent, parent_kra_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (kra[0], kra[1], kra[2].value, kra[3], kra[4], kra[5], kra[6], kra[7], kra[8], kra[9])
-        )
-    gm_ops_kra_id = cursor.lastrowid - 2
-
-    # Sample KRAs for Manager Development (Kevin Wright)
-    mgr_dev_id = user_id_map["mgr.dev@company.com"]
-    mgr_kras = [
-        # Present Year (70%)
-        (mgr_dev_id, current_year, KRASection.PRESENT_YEAR_70, "Platform System Availability & Uptime", "Maintain high availability across core microservices", "% Uptime", 99.9, 99.95, 40.0, None),
-        (mgr_dev_id, current_year, KRASection.PRESENT_YEAR_70, "On-Time Software Feature Delivery", "Complete planned quarterly feature roadmap items", "% Features", 90.0, 92.0, 35.0, None),
-        (mgr_dev_id, current_year, KRASection.PRESENT_YEAR_70, "Code Quality & Bug Resolution SLA", "Resolve P1/P2 production issues within target SLA hours", "% SLA", 95.0, 97.0, 25.0, None),
-        # Upcoming Year (30%)
-        (mgr_dev_id, current_year, KRASection.UPCOMING_YEAR_30, "Cloud Migration Phase 2", "Migrate legacy databases to serverless cloud infrastructure", "% Migration", 100.0, 80.0, 60.0, None),
-        (mgr_dev_id, current_year, KRASection.UPCOMING_YEAR_30, "Developer Upskilling & Certifications", "Team completion of cloud & security certifications", "Count", 8.0, 8.0, 40.0, None),
-    ]
-    for kra in mgr_kras:
-        cursor.execute(
-            """INSERT INTO kras (user_id, year, section, lever_name, description, metric_unit, target_value, actual_outcome, weightage_percent, parent_kra_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (kra[0], kra[1], kra[2].value, kra[3], kra[4], kra[5], kra[6], kra[7], kra[8], kra[9])
-        )
-
-    # Sample KRAs for Employee (Sarah Jenkins) - Dev Team Member
-    emp_sarah_id = user_id_map["emp.sarah@company.com"]
-    sarah_kras = [
-        # Present Year (70%)
-        (emp_sarah_id, current_year, KRASection.PRESENT_YEAR_70, "Core API Endpoint Velocity", "Develop and launch 12 REST API modules with unit tests", "Endpoints", 12.0, 14.0, 50.0, None),
-        (emp_sarah_id, current_year, KRASection.PRESENT_YEAR_70, "Automated Test Coverage", "Increase backend test code coverage to 85%", "% Coverage", 85.0, 88.5, 50.0, None),
-        # Upcoming Year (30%)
-        (emp_sarah_id, current_year, KRASection.UPCOMING_YEAR_30, "GraphQL Gateway Implementation", "Design & build GraphQL aggregator for frontend mobile app", "% Complete", 100.0, 90.0, 100.0, None),
-    ]
-    for kra in sarah_kras:
-        cursor.execute(
-            """INSERT INTO kras (user_id, year, section, lever_name, description, metric_unit, target_value, actual_outcome, weightage_percent, parent_kra_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (kra[0], kra[1], kra[2].value, kra[3], kra[4], kra[5], kra[6], kra[7], kra[8], kra[9])
-        )
-
-    # 4. Insert Initial Appraisals with calculated Scores
-    # We will trigger score calculations for seed users
     conn.commit()
     conn.close()
 
