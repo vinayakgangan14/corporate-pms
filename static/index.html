@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Corporate Performance Management System (PMS)</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f7ff',
+                            100: '#e0effe',
+                            500: '#0284c7',
+                            600: '#0369a1',
+                            700: '#075985',
+                            900: '#0c4a6e',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .gradient-card {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        }
+        .tree-line::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 20px;
+            width: 2px;
+            background: #cbd5e1;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 font-sans text-slate-800 antialiased min-h-screen flex flex-col">
+
+    <!-- TOP NAV BAR -->
+    <header class="bg-slate-900 text-white shadow-lg border-b border-slate-800 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center font-bold text-white shadow-md">
+                    PMS
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+                        Enterprise Performance System 
+                        <span class="text-xs bg-sky-500/20 text-sky-300 border border-sky-500/30 px-2 py-0.5 rounded-full font-medium">70% EVA / 30% Future</span>
+                    </h1>
+                    <p class="text-xs text-slate-400">Cascading Corporate Hierarchy & Goal Alignment Platform</p>
+                </div>
+            </div>
+
+            <!-- DEMO ROLE SWITCHER -->
+            <div class="flex items-center space-x-3 bg-slate-800/80 p-1.5 rounded-lg border border-slate-700">
+                <span class="text-xs font-semibold text-slate-300 flex items-center gap-1 pl-2">
+                    <i data-lucide="user-check" class="w-3.5 h-3.5 text-sky-400"></i> Active Role:
+                </span>
+                <select id="userSelector" onchange="switchActiveUser(this.value)" class="bg-slate-900 text-white text-xs font-medium py-1.5 px-3 rounded border border-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500">
+                    <option value="" disabled selected>Loading personas...</option>
+                </select>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN APP CONTAINER -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-grow w-full space-y-6">
+
+        <!-- EXECUTIVE SUMMARY STATS BANNER -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Active User Persona</p>
+                    <h3 id="statUserName" class="text-lg font-bold text-slate-900 mt-1">--</h3>
+                    <p id="statUserDesignation" class="text-xs text-slate-500">--</p>
+                </div>
+                <div class="w-12 h-12 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center">
+                    <i data-lucide="user" class="w-6 h-6"></i>
+                </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Reporting Line</p>
+                    <h3 id="statUserManager" class="text-base font-bold text-slate-900 mt-1">--</h3>
+                    <p id="statUserRole" class="text-xs font-semibold text-sky-600 uppercase">--</p>
+                </div>
+                <div class="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                    <i data-lucide="git-merge" class="w-6 h-6"></i>
+                </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Overall Composite Score</p>
+                    <div class="flex items-baseline space-x-2 mt-1">
+                        <h3 id="statCompositeScore" class="text-2xl font-extrabold text-slate-900">0.0%</h3>
+                        <span id="statGradeBadge" class="px-2 py-0.5 text-xs font-bold rounded-md bg-slate-100 text-slate-700">N/A</span>
+                    </div>
+                    <p id="statBandName" class="text-xs text-slate-500 font-medium">Pending Evaluation</p>
+                </div>
+                <div class="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                    <i data-lucide="award" class="w-6 h-6"></i>
+                </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Appraisal Status</p>
+                    <h3 id="statAppraisalStatus" class="text-base font-bold text-amber-600 mt-1">DRAFT</h3>
+                    <p id="statDownchainCount" class="text-xs text-slate-500">0 Down-chain Reports</p>
+                </div>
+                <div class="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                    <i data-lucide="check-square" class="w-6 h-6"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- NAVIGATION TABS -->
+        <div class="border-b border-slate-200 flex space-x-6">
+            <button onclick="switchTab('appraisalTab')" id="tabBtnAppraisal" class="py-3 text-sm font-semibold border-b-2 border-sky-600 text-sky-600 flex items-center gap-2">
+                <i data-lucide="calculator" class="w-4 h-4"></i> My 70/30 Appraisal Sheet
+            </button>
+            <button onclick="switchTab('hierarchyTab')" id="tabBtnHierarchy" class="py-3 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2">
+                <i data-lucide="sitemap" class="w-4 h-4"></i> Org Hierarchy & Goal Cascades
+            </button>
+            <button onclick="switchTab('teamTab')" id="tabBtnTeam" class="py-3 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2">
+                <i data-lucide="users" class="w-4 h-4"></i> Direct Reports Review
+            </button>
+            <button onclick="switchTab('adminTab')" id="tabBtnAdmin" class="py-3 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2">
+                <i data-lucide="settings" class="w-4 h-4"></i> Admin Configuration & User Management
+            </button>
+        </div>
+
+        <!-- TAB 1: 70/30 APPRAISAL WORKSPACE -->
+        <div id="appraisalTab" class="space-y-6">
+
+            <!-- WEIGHTAGE FORMULA BANNER -->
+            <div class="bg-gradient-to-r from-sky-900 to-indigo-900 text-white rounded-2xl p-6 shadow-md relative overflow-hidden">
+                <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div class="space-y-2 max-w-2xl">
+                        <span class="bg-sky-400/20 text-sky-300 text-xs font-semibold px-3 py-1 rounded-full border border-sky-400/30">Evaluation Rules</span>
+                        <h2 class="text-xl font-bold">70% Present Year EVA + 30% Upcoming Year Performance</h2>
+                        <p class="text-xs text-sky-100/80 leading-relaxed">
+                            Your final appraisal rating is calculated using a mandatory corporate dual-weightage model: <strong>70% weightage</strong> is assigned to Present Year EVA/KRA achievement outcomes, and <strong>30% weightage</strong> is assigned to Upcoming Year target commitments & strategic objectives.
+                        </p>
+                    </div>
+
+                    <!-- 70/30 SCORE SPLIT BREAKDOWN DISPLAY -->
+                    <div class="bg-slate-900/80 border border-slate-700 rounded-xl p-4 flex items-center space-x-6 shadow-inner">
+                        <div class="text-center border-r border-slate-700 pr-6">
+                            <span class="text-xs font-medium text-sky-400">Present Year (70%)</span>
+                            <div id="summaryPresent70Score" class="text-2xl font-extrabold text-white">0.0%</div>
+                            <span id="summaryPresentWeightSum" class="text-[10px] text-slate-400">KRA Sum: 100%</span>
+                        </div>
+                        <div class="text-center border-r border-slate-700 pr-6">
+                            <span class="text-xs font-medium text-indigo-400">Upcoming Year (30%)</span>
+                            <div id="summaryUpcoming30Score" class="text-2xl font-extrabold text-white">0.0%</div>
+                            <span id="summaryUpcomingWeightSum" class="text-[10px] text-slate-400">KRA Sum: 100%</span>
+                        </div>
+                        <div class="text-center pl-2">
+                            <span class="text-xs font-bold text-emerald-400">Composite Score</span>
+                            <div id="summaryCompositeScore" class="text-3xl font-black text-emerald-400">0.0%</div>
+                            <span id="summaryGrade" class="text-[11px] font-bold text-white bg-emerald-600 px-2 py-0.5 rounded">Grade --</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION A: PRESENT YEAR EVA & KRAS (70% WEIGHTAGE) -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-8 h-8 rounded-lg bg-sky-600 text-white flex items-center justify-center font-bold text-sm">
+                            70%
+                        </div>
+                        <div>
+                            <h3 class="text-base font-bold text-slate-900">SECTION A: Present Year EVA & KRAs (70% Weightage)</h3>
+                            <p class="text-xs text-slate-500">Key Result Areas, Economic Value Added targets, metrics, actual outcomes, and self ratings.</p>
+                        </div>
+                    </div>
+                    <button onclick="openAddKRAModal('PRESENT_YEAR_70')" class="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition">
+                        <i data-lucide="plus-circle" class="w-4 h-4"></i> Add Present Year KRA
+                    </button>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead>
+                            <tr class="bg-slate-100/70 text-slate-600 font-semibold border-b border-slate-200">
+                                <th class="p-3">KRA Lever & Description</th>
+                                <th class="p-3">Metric Unit</th>
+                                <th class="p-3 text-right">Target</th>
+                                <th class="p-3 text-right">Actual Outcome</th>
+                                <th class="p-3 text-right">Achievement %</th>
+                                <th class="p-3 text-right">Weightage %</th>
+                                <th class="p-3 text-right">Self Rating</th>
+                                <th class="p-3 text-right">Weighted Score</th>
+                                <th class="p-3 text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="presentKraTableBody" class="divide-y divide-slate-100">
+                            <!-- Rows populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- SECTION B: UPCOMING YEAR PERFORMANCE & OBJECTIVES (30% WEIGHTAGE) -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-sm">
+                            30%
+                        </div>
+                        <div>
+                            <h3 class="text-base font-bold text-slate-900">SECTION B: Upcoming Year Performance & Objectives (30% Weightage)</h3>
+                            <p class="text-xs text-slate-500">Target commitments, strategic initiatives, capacity building, and future readiness.</p>
+                        </div>
+                    </div>
+                    <button onclick="openAddKRAModal('UPCOMING_YEAR_30')" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition">
+                        <i data-lucide="plus-circle" class="w-4 h-4"></i> Add Upcoming Objective
+                    </button>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead>
+                            <tr class="bg-slate-100/70 text-slate-600 font-semibold border-b border-slate-200">
+                                <th class="p-3">Objective & Strategic Target</th>
+                                <th class="p-3">Metric Unit</th>
+                                <th class="p-3 text-right">Target Commitment</th>
+                                <th class="p-3 text-right">Current Status / Outcome</th>
+                                <th class="p-3 text-right">Progress %</th>
+                                <th class="p-3 text-right">Weightage %</th>
+                                <th class="p-3 text-right">Self Rating</th>
+                                <th class="p-3 text-right">Weighted Score</th>
+                                <th class="p-3 text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="upcomingKraTableBody" class="divide-y divide-slate-100">
+                            <!-- Rows populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- SELF APPRAISAL COMMENTS & SUBMISSION BOX -->
+            <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+                <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <i data-lucide="file-text" class="w-5 h-5 text-sky-600"></i> Self Appraisal & Manager Assessment Comments
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Employee Self Appraisal Notes & Justification</label>
+                        <textarea id="selfCommentsInput" rows="3" class="w-full text-xs p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none" placeholder="Provide achievements summary, challenges overcome, and key contributions..."></textarea>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Evaluator / Manager Feedback & Development Plan</label>
+                        <textarea id="managerCommentsInput" rows="3" class="w-full text-xs p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none" placeholder="Manager feedback on 70% present EVA vs 30% upcoming goals..."></textarea>
+                    </div>
+                </div>
+
+                <div class="flex justify-end space-x-3 pt-2">
+                    <button onclick="submitAppraisalForm('DRAFT')" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold text-xs rounded-xl transition">
+                        Save as Draft
+                    </button>
+                    <button onclick="submitAppraisalForm('SUBMITTED_SELF')" class="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white font-semibold text-xs rounded-xl shadow transition">
+                        Submit Self Appraisal
+                    </button>
+                    <button onclick="submitAppraisalForm('APPROVED')" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl shadow transition">
+                        Approve Appraisal (Manager / MD)
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 2: ORGANIZATIONAL HIERARCHY & GOAL CASCADES -->
+        <div id="hierarchyTab" class="hidden space-y-6">
+            <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <i data-lucide="git-branch" class="w-5 h-5 text-sky-600"></i> Corporate Reporting Hierarchy & KRA Alignment Tree
+                        </h2>
+                        <p class="text-xs text-slate-500">Visualizing reporting chain from Managing Director (MD) down to Supervisors and Employees with live 70/30 composite PMS ratings.</p>
+                    </div>
+                    <span class="text-xs bg-slate-100 text-slate-600 font-medium px-3 py-1 rounded-full border">
+                        Interactive Down-chain Inspector
+                    </span>
+                </div>
+
+                <div id="hierarchyTreeContainer" class="space-y-4 pt-4 border-t border-slate-100">
+                    <!-- Org tree rendered dynamically -->
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: DIRECT REPORTS REVIEW -->
+        <div id="teamTab" class="hidden space-y-6">
+            <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <i data-lucide="users" class="w-5 h-5 text-sky-600"></i> Direct Reports Appraisal Reviews
+                        </h2>
+                        <p class="text-xs text-slate-500">Supervisors, Managers, HODs, GMs, and MD can review and score down-chain team members here.</p>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead>
+                            <tr class="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
+                                <th class="p-3">Team Member Name</th>
+                                <th class="p-3">Role</th>
+                                <th class="p-3">Designation</th>
+                                <th class="p-3 text-right">Composite PMS Score</th>
+                                <th class="p-3 text-center">Grade</th>
+                                <th class="p-3 text-center">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="teamMembersTableBody" class="divide-y divide-slate-100">
+                            <!-- Direct reports rendered dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 4: ADMIN CONFIGURATION & USER MANAGEMENT -->
+        <div id="adminTab" class="hidden space-y-6">
+            <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <i data-lucide="user-plus" class="w-5 h-5 text-sky-600"></i> Add New Organizational User / Role
+                        </h2>
+                        <p class="text-xs text-slate-500">Administrator tool to add Managing Director (MD), General Managers (GM), HODs, Managers, Supervisors, and Staff.</p>
+                    </div>
+                </div>
+
+                <form id="addUserForm" onsubmit="handleCreateUser(event)" class="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Full Name</label>
+                        <input type="text" id="newUserName" required class="w-full text-xs p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none" placeholder="e.g. Alexander Vance">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Email Address</label>
+                        <input type="email" id="newUserEmail" required class="w-full text-xs p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none" placeholder="vance@company.com">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Role in Hierarchy</label>
+                        <select id="newUserRole" required class="w-full text-xs p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                            <option value="MD">Managing Director (MD)</option>
+                            <option value="GM">General Manager (GM)</option>
+                            <option value="HOD">Head of Department (HOD)</option>
+                            <option value="MANAGER">Manager</option>
+                            <option value="SUPERVISOR">Supervisor</option>
+                            <option value="EMPLOYEE" selected>Employee / Staff</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Designation / Title</label>
+                        <input type="text" id="newUserDesignation" required class="w-full text-xs p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none" placeholder="e.g. Lead Process Engineer">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Department</label>
+                        <select id="newUserDepartment" class="w-full text-xs p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                            <!-- Populated dynamically -->
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Reporting Manager (Upstream Link)</label>
+                        <select id="newUserManager" class="w-full text-xs p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                            <option value="">None (Top Level / MD)</option>
+                        </select>
+                    </div>
+                    <div class="md:col-span-3 flex justify-end">
+                        <button type="submit" class="px-5 py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-2">
+                            <i data-lucide="plus" class="w-4 h-4"></i> Register User into Organizational Chain
+                        </button>
+                    </div>
+                </form>
+
+                <!-- EXECUTIVE ANALYTICS -->
+                <div class="border-t border-slate-200 pt-6">
+                    <h3 class="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
+                        <i data-lucide="pie-chart" class="w-4 h-4 text-sky-600"></i> Corporate Appraisal Distribution Summary
+                    </h3>
+                    <div id="analyticsContainer" class="grid grid-cols-2 md:grid-cols-5 gap-3">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- MODAL: ADD KRA / TARGET OBJECTIVE -->
+    <div id="addKraModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                <h3 id="modalTitle" class="text-base font-bold text-slate-900">Add Key Result Area (KRA)</h3>
+                <button onclick="closeAddKRAModal()" class="text-slate-400 hover:text-slate-600">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <form id="kraForm" onsubmit="handleSaveKRA(event)" class="space-y-3">
+                <input type="hidden" id="kraSectionInput" value="PRESENT_YEAR_70">
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">KRA Lever / Objective Title</label>
+                    <input type="text" id="kraLeverName" required class="w-full text-xs p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none" placeholder="e.g. Annual Plant EVA Yield Efficiency">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Detailed Description & Context</label>
+                    <textarea id="kraDescription" rows="2" class="w-full text-xs p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none" placeholder="Briefly describe operational levers and milestone deliverables..."></textarea>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Metric Unit</label>
+                        <select id="kraMetricUnit" class="w-full text-xs p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                            <option value="USD Million">USD Million</option>
+                            <option value="%">% Percentage</option>
+                            <option value="Units">Units / Volume</option>
+                            <option value="Count">Count / Milestones</option>
+                            <option value="Ratio">Ratio / Index</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Section Weightage %</label>
+                        <input type="number" step="1" min="1" max="100" id="kraWeightage" required class="w-full text-xs p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none" placeholder="e.g. 30">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Target Value</label>
+                        <input type="number" step="0.01" id="kraTargetValue" required class="w-full text-xs p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none" placeholder="e.g. 100.0">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Actual Outcome Achieved</label>
+                        <input type="number" step="0.01" id="kraActualOutcome" required class="w-full text-xs p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none" placeholder="e.g. 105.0">
+                    </div>
+                </div>
+
+                <div class="flex justify-end space-x-3 border-t border-slate-100 pt-3">
+                    <button type="button" onclick="closeAddKRAModal()" class="px-4 py-2 bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg hover:bg-slate-300 transition">Cancel</button>
+                    <button type="submit" class="px-4 py-2 bg-sky-600 text-white text-xs font-bold rounded-lg hover:bg-sky-700 transition">Save KRA Objective</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- SCRIPT INCLUSION -->
+    <script src="/static/app.js"></script>
+</body>
+</html>

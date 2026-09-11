@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: pms_postgres_db
+    restart: always
+    environment:
+      POSTGRES_USER: pms_user
+      POSTGRES_PASSWORD: pms_secure_password_2026
+      POSTGRES_DB: pms_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  web:
+    build: .
+    container_name: pms_web_app
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://pms_user:pms_secure_password_2026@db:5432/pms_db
+    depends_on:
+      - db
+
+volumes:
+  postgres_data:
