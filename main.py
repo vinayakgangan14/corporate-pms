@@ -88,7 +88,12 @@ def read_root():
     index_path = os.path.join(static_dir, "index.html")
     if os.path.exists(index_path):
         with open(index_path, "r", encoding="utf-8") as f:
-            return HTMLResponse(content=f.read())
+            headers = {
+                "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+            return HTMLResponse(content=f.read(), headers=headers)
     return HTMLResponse("<h2>PMS Server Running. Static UI loading...</h2>")
 
 @app.get("/api/users")
