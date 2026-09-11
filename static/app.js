@@ -236,6 +236,11 @@ async function renderHierarchyTree() {
     }
 }
 
+function toggleMobileNav() {
+    const menu = document.getElementById("mobileNavMenu");
+    menu.classList.toggle("hidden");
+}
+
 function renderTreeNode(node, level = 0) {
     const roleColors = {
         ADMIN: "bg-purple-100 text-purple-800 border-purple-200",
@@ -248,7 +253,7 @@ function renderTreeNode(node, level = 0) {
     };
 
     const badgeStyle = roleColors[node.role] || "bg-slate-100 text-slate-800";
-    const indentClass = level === 0 ? "" : level === 1 ? "ml-6 border-l-2 border-sky-200 pl-4" : "ml-12 border-l-2 border-slate-200 pl-4";
+    const indentClass = level === 0 ? "" : level === 1 ? "ml-2 sm:ml-6 border-l-2 border-sky-200 pl-2 sm:pl-4" : "ml-4 sm:ml-12 border-l-2 border-slate-200 pl-2 sm:pl-4";
 
     let reportsHtml = "";
     if (node.reports && node.reports.length > 0) {
@@ -257,27 +262,27 @@ function renderTreeNode(node, level = 0) {
 
     return `
         <div class="${indentClass} my-2">
-            <div class="bg-white p-3 rounded-xl border border-slate-200 hover:border-sky-400 shadow-sm flex items-center justify-between transition cursor-pointer" onclick="switchActiveUser(${node.id})">
-                <div class="flex items-center space-x-3">
-                    <div class="w-8 h-8 rounded-full bg-slate-900 text-white font-bold text-xs flex items-center justify-center">
+            <div class="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200 hover:border-sky-400 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0 transition cursor-pointer" onclick="switchActiveUser(${node.id})">
+                <div class="flex items-center space-x-2.5">
+                    <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-900 text-white font-bold text-[10px] sm:text-xs flex items-center justify-center flex-shrink-0">
                         ${node.name.split(' ').map(n=>n[0]).join('')}
                     </div>
-                    <div>
-                        <div class="flex items-center space-x-2">
-                            <span class="font-bold text-xs text-slate-900">${node.name}</span>
-                            <span class="px-2 py-0.5 text-[10px] rounded-full font-bold border ${badgeStyle}">${node.role}</span>
+                    <div class="min-w-0">
+                        <div class="flex items-center space-x-2 flex-wrap gap-y-1">
+                            <span class="font-bold text-xs text-slate-900 truncate">${node.name}</span>
+                            <span class="px-1.5 py-0.5 text-[9px] sm:text-[10px] rounded-full font-bold border ${badgeStyle}">${node.role}</span>
                         </div>
-                        <p class="text-[11px] text-slate-500">${node.designation} • ${node.department_name || 'Executive'}</p>
+                        <p class="text-[10px] sm:text-[11px] text-slate-500 truncate">${node.designation} • ${node.department_name || 'Executive'}</p>
                     </div>
                 </div>
 
-                <div class="flex items-center space-x-4">
-                    <div class="text-right">
+                <div class="flex items-center justify-between sm:justify-end space-x-3 pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                    <div class="text-left sm:text-right">
                         <div class="text-xs font-black text-slate-900">${node.composite_score.toFixed(1)}%</div>
-                        <div class="text-[10px] font-bold text-emerald-600">Grade ${node.grade}</div>
+                        <div class="text-[9px] sm:text-[10px] font-bold text-emerald-600">Grade ${node.grade}</div>
                     </div>
-                    <button class="px-2 py-1 bg-slate-100 hover:bg-sky-50 hover:text-sky-700 text-slate-600 text-[11px] font-semibold rounded-lg border transition">
-                        View Appraisal
+                    <button class="px-2 py-1 bg-slate-100 hover:bg-sky-50 hover:text-sky-700 text-slate-600 text-[10px] sm:text-[11px] font-semibold rounded-lg border transition">
+                        View Sheet
                     </button>
                 </div>
             </div>
