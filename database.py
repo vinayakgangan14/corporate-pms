@@ -1,125 +1,15 @@
 """
 Database connection and initialization module supporting both PostgreSQL (Production on Render/Supabase)
 and SQLite (Local development).
-Includes graceful error fallback to ensure 100% server uptime even during database migration.
+Supports Administrator Configurable Section Weightages & Settings.
 """
 
 import os
 import sqlite3
+from models import CREATE_TABLES_SQL_SQLITE, CREATE_TABLES_SQL_PG
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "pms.db")
 DATABASE_URL = os.environ.get("DATABASE_URL")
-
-# SQLite Schema
-CREATE_TABLES_SQL_SQLITE = """
-CREATE TABLE IF NOT EXISTS departments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,
-    code TEXT NOT NULL UNIQUE
-);
-
-CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    email TEXT NOT NULL UNIQUE,
-    role TEXT NOT NULL,
-    designation TEXT NOT NULL,
-    department_id INTEGER,
-    manager_id INTEGER,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (department_id) REFERENCES departments(id),
-    FOREIGN KEY (manager_id) REFERENCES users(id)
-);
-
-CREATE TABLE IF NOT EXISTS kras (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    year INTEGER NOT NULL,
-    section TEXT NOT NULL,
-    lever_name TEXT NOT NULL,
-    description TEXT,
-    metric_unit TEXT NOT NULL,
-    target_value REAL NOT NULL,
-    actual_outcome REAL DEFAULT 0.0,
-    weightage_percent REAL NOT NULL,
-    parent_kra_id INTEGER,
-    self_rating_percent REAL DEFAULT 0.0,
-    manager_rating_percent REAL DEFAULT 0.0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id),
-    FOREIGN KEY (parent_kra_id) REFERENCES kras(id)
-);
-
-CREATE TABLE IF NOT EXISTS appraisals (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    year INTEGER NOT NULL,
-    status TEXT NOT NULL DEFAULT 'DRAFT',
-    present_year_score REAL DEFAULT 0.0,
-    upcoming_year_score REAL DEFAULT 0.0,
-    composite_score REAL DEFAULT 0.0,
-    performance_band TEXT DEFAULT 'Not Rated',
-    grade TEXT DEFAULT 'N/A',
-    self_comments TEXT,
-    manager_comments TEXT,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id),
-    UNIQUE(user_id, year)
-);
-"""
-
-# PostgreSQL Schema
-CREATE_TABLES_SQL_PG = """
-CREATE TABLE IF NOT EXISTS departments (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL UNIQUE,
-    code VARCHAR(50) NOT NULL UNIQUE
-);
-
-CREATE TABLE IF NOT EXISTS users (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    email VARCHAR(255) NOT NULL UNIQUE,
-    role VARCHAR(50) NOT NULL,
-    designation VARCHAR(255) NOT NULL,
-    department_id INTEGER REFERENCES departments(id),
-    manager_id INTEGER REFERENCES users(id),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS kras (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(id),
-    year INTEGER NOT NULL,
-    section VARCHAR(50) NOT NULL,
-    lever_name VARCHAR(255) NOT NULL,
-    description TEXT,
-    metric_unit VARCHAR(50) NOT NULL,
-    target_value DOUBLE PRECISION NOT NULL,
-    actual_outcome DOUBLE PRECISION DEFAULT 0.0,
-    weightage_percent DOUBLE PRECISION NOT NULL,
-    parent_kra_id INTEGER REFERENCES kras(id),
-    self_rating_percent DOUBLE PRECISION DEFAULT 0.0,
-    manager_rating_percent DOUBLE PRECISION DEFAULT 0.0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS appraisals (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(id),
-    year INTEGER NOT NULL,
-    status VARCHAR(50) NOT NULL DEFAULT 'DRAFT',
-    present_year_score DOUBLE PRECISION DEFAULT 0.0,
-    upcoming_year_score DOUBLE PRECISION DEFAULT 0.0,
-    composite_score DOUBLE PRECISION DEFAULT 0.0,
-    performance_band VARCHAR(100) DEFAULT 'Not Rated',
-    grade VARCHAR(10) DEFAULT 'N/A',
-    self_comments TEXT,
-    manager_comments TEXT,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_id, year)
-);
-"""
 
 _active_driver_is_postgres = False
 
@@ -161,9 +51,65 @@ def init_db():
             conn.commit()
             
         conn.close()
+        init_default_settings()
         seed_data_if_empty()
     except Exception as e:
         print(f"[DATABASE WARNING] Exception during init_db: {e}")
+
+def init_default_settings():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    defaults = [
+        ("section1_weightage_percent", "70.0"),
+        ("section2_weightage_percent", "30.0")
+    ]
+    
+    if is_postgres():
+        for key, val in defaults:
+            cursor.execute("INSERT INTO system_settings (key, value) VALUES (%s, %s) ON CONFLICT (key) DO NOTHING", (key, val))
+    else:
+        for key, val in defaults:
+            cursor.execute("INSERT OR IGNORE INTO system_settings (key, value) VALUES (?, ?)", (key, val))
+            
+    conn.commit()
+    conn.close()
+
+def get_system_settings():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT key, value FROM system_settings")
+    rows = cursor.fetchall()
+    conn.close()
+    
+    settings = {"section1_weightage": 70.0, "section2_weightage": 30.0}
+    for row in rows:
+        if is_postgres():
+            k, v = row['key'], row['value']
+        else:
+            k, v = row[0], row[1]
+            
+        if k == "section1_weightage_percent":
+            settings["section1_weightage"] = float(v)
+        elif k == "section2_weightage_percent":
+            settings["section2_weightage"] = float(v)
+            
+    return settings
+
+def update_system_settings(sec1_weight: float, sec2_weight: float):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    if is_postgres():
+        cursor.execute("UPDATE system_settings SET value = %s WHERE key = 'section1_weightage_percent'", (str(sec1_weight),))
+        cursor.execute("UPDATE system_settings SET value = %s WHERE key = 'section2_weightage_percent'", (str(sec2_weight),))
+    else:
+        cursor.execute("UPDATE system_settings SET value = ? WHERE key = 'section1_weightage_percent'", (str(sec1_weight),))
+        cursor.execute("UPDATE system_settings SET value = ? WHERE key = 'section2_weightage_percent'", (str(sec2_weight),))
+        
+    conn.commit()
+    conn.close()
 
 def seed_data_if_empty():
     try:

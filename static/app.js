@@ -1,20 +1,37 @@
 /**
- * Single-Page Web Application Frontend Logic for PMS
- * Handles 70/30 score engine rendering, responsive mobile cards, hierarchy tree, and persona switching.
+ * Single-Page Web Application Frontend Logic for Purechem PMS
+ * Supports Administrator Configurable Section Weightages & 100% KRA Weightage Sum Enforcement.
  */
 
 let allUsers = [];
 let currentUserId = null;
 let currentPmsData = null;
+let activeSettings = { section1_weightage: 70.0, section2_weightage: 30.0 };
 
 document.addEventListener("DOMContentLoaded", () => {
     initApp();
 });
 
 async function initApp() {
+    await fetchSettings();
     await fetchUsers();
     await fetchDepartments();
     lucide.createIcons();
+}
+
+async function fetchSettings() {
+    try {
+        const res = await fetch("/api/settings");
+        activeSettings = await res.json();
+        const sec1Inp = document.getElementById("adminSec1WeightInput");
+        const sec2Inp = document.getElementById("adminSec2WeightInput");
+        if (sec1Inp && sec2Inp) {
+            sec1Inp.value = activeSettings.section1_weightage;
+            sec2Inp.value = activeSettings.section2_weightage;
+        }
+    } catch (err) {
+        console.error("Error loading system settings:", err);
+    }
 }
 
 async function fetchUsers() {
@@ -115,22 +132,69 @@ function renderHeaderStats() {
 function renderKraTables() {
     if (!currentPmsData) return;
     const pms = currentPmsData.pms;
+    const sec1Weight = pms.section_settings ? pms.section_settings.section1_weightage_percent : 70.0;
+    const sec2Weight = pms.section_settings ? pms.section_settings.section2_weightage_percent : 30.0;
 
-    // Summary numbers
+    // Dynamic Banner & Labels
+    document.getElementById("bannerFormulaTitle").innerText = `${sec1Weight}% Section 1 (Current EVA) + ${sec2Weight}% Section 2 (Future EVA)`;
+    document.getElementById("bannerSec1Text").innerText = `${sec1Weight}% weightage`;
+    document.getElementById("bannerSec2Text").innerText = `${sec2Weight}% weightage`;
+    document.getElementById("labelSec1Badge").innerText = `Section 1 (${sec1Weight}%)`;
+    document.getElementById("labelSec2Badge").innerText = `Section 2 (${sec2Weight}%)`;
+    document.getElementById("sec1PillBadge").innerText = `${sec1Weight}%`;
+    document.getElementById("sec2PillBadge").innerText = `${sec2Weight}%`;
+
+    // Summary Scores
     document.getElementById("summaryPresent70Score").innerText = pms.present_year.raw_score.toFixed(1) + "%";
-    document.getElementById("summaryPresentWeightSum").innerText = `Weight: ${pms.present_year.total_kra_weight_sum}%`;
     document.getElementById("summaryUpcoming30Score").innerText = pms.upcoming_year.raw_score.toFixed(1) + "%";
-    document.getElementById("summaryUpcomingWeightSum").innerText = `Weight: ${pms.upcoming_year.total_kra_weight_sum}%`;
     document.getElementById("summaryCompositeScore").innerText = pms.composite_score.toFixed(1) + "%";
     document.getElementById("summaryGrade").innerText = `Grade ${pms.grade} (${pms.performance_band.split('/')[0]})`;
 
-    // PRESENT YEAR - Desktop Table
+    // --- SECTION 1 WEIGHTAGE SUM VALIDATION DISPLAY ---
+    const sec1Sum = pms.present_year.total_kra_weight_sum;
+    const isSec1Valid = pms.present_year.is_valid_100_percent;
+    document.getElementById("summaryPresentWeightSum").innerText = `Sum: ${sec1Sum}%`;
+
+    const sec1StatusBadge = document.getElementById("sec1WeightStatusBadge");
+    const sec1ErrorBanner = document.getElementById("sec1ErrorBanner");
+
+    if (isSec1Valid) {
+        sec1StatusBadge.className = "px-2 py-0.5 text-[9px] sm:text-[10px] font-bold rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300";
+        sec1StatusBadge.innerHTML = `Sum: ${sec1Sum}% ✓`;
+        sec1ErrorBanner.classList.add("hidden");
+    } else {
+        sec1StatusBadge.className = "px-2 py-0.5 text-[9px] sm:text-[10px] font-bold rounded-full bg-rose-100 text-rose-800 border border-rose-300 animate-pulse";
+        sec1StatusBadge.innerHTML = `Error: ${sec1Sum}% / 100% ⚠`;
+        sec1ErrorBanner.classList.remove("hidden");
+        document.getElementById("sec1ErrorMessageText").innerText = pms.present_year.weightage_error || `Error: Section 1 KRA weightages sum to ${sec1Sum}%, but must equal exactly 100%!`;
+    }
+
+    // --- SECTION 2 WEIGHTAGE SUM VALIDATION DISPLAY ---
+    const sec2Sum = pms.upcoming_year.total_kra_weight_sum;
+    const isSec2Valid = pms.upcoming_year.is_valid_100_percent;
+    document.getElementById("summaryUpcomingWeightSum").innerText = `Sum: ${sec2Sum}%`;
+
+    const sec2StatusBadge = document.getElementById("sec2WeightStatusBadge");
+    const sec2ErrorBanner = document.getElementById("sec2ErrorBanner");
+
+    if (isSec2Valid) {
+        sec2StatusBadge.className = "px-2 py-0.5 text-[9px] sm:text-[10px] font-bold rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300";
+        sec2StatusBadge.innerHTML = `Sum: ${sec2Sum}% ✓`;
+        sec2ErrorBanner.classList.add("hidden");
+    } else {
+        sec2StatusBadge.className = "px-2 py-0.5 text-[9px] sm:text-[10px] font-bold rounded-full bg-rose-100 text-rose-800 border border-rose-300 animate-pulse";
+        sec2StatusBadge.innerHTML = `Error: ${sec2Sum}% / 100% ⚠`;
+        sec2ErrorBanner.classList.remove("hidden");
+        document.getElementById("sec2ErrorMessageText").innerText = pms.upcoming_year.weightage_error || `Error: Section 2 KRA weightages sum to ${sec2Sum}%, but must equal exactly 100%!`;
+    }
+
+    // SECTION 1 - Desktop Table & Mobile Cards
     const presentTbody = document.getElementById("presentKraTableBody");
     const presentCardsContainer = document.getElementById("presentKraMobileCards");
 
     if (pms.present_year.kras.length === 0) {
-        const emptyHtml = `<div class="p-4 text-center text-slate-400 italic text-xs">No Present Year EVA KRAs defined. Click "+ Add KRA" above to add.</div>`;
-        if (presentTbody) presentTbody.innerHTML = `<tr><td colspan="9" class="p-4 text-center text-slate-400 italic">No Present Year KRAs defined.</td></tr>`;
+        const emptyHtml = `<div class="p-4 text-center text-slate-400 italic text-xs">No Section 1 KRAs defined. Click "+ Add Section 1 KRA" above to add.</div>`;
+        if (presentTbody) presentTbody.innerHTML = `<tr><td colspan="9" class="p-4 text-center text-slate-400 italic">No Section 1 KRAs defined.</td></tr>`;
         if (presentCardsContainer) presentCardsContainer.innerHTML = emptyHtml;
     } else {
         if (presentTbody) {
@@ -210,13 +274,13 @@ function renderKraTables() {
         }
     }
 
-    // UPCOMING YEAR - Desktop Table & Mobile Cards
+    // SECTION 2 - Desktop Table & Mobile Cards
     const upcomingTbody = document.getElementById("upcomingKraTableBody");
     const upcomingCardsContainer = document.getElementById("upcomingKraMobileCards");
 
     if (pms.upcoming_year.kras.length === 0) {
-        const emptyHtml = `<div class="p-4 text-center text-slate-400 italic text-xs">No Upcoming Year Objectives defined. Click "+ Add Objective" above to add.</div>`;
-        if (upcomingTbody) upcomingTbody.innerHTML = `<tr><td colspan="9" class="p-4 text-center text-slate-400 italic">No Upcoming Objectives defined.</td></tr>`;
+        const emptyHtml = `<div class="p-4 text-center text-slate-400 italic text-xs">No Section 2 KRAs defined. Click "+ Add Section 2 KRA" above to add.</div>`;
+        if (upcomingTbody) upcomingTbody.innerHTML = `<tr><td colspan="9" class="p-4 text-center text-slate-400 italic">No Section 2 KRAs defined.</td></tr>`;
         if (upcomingCardsContainer) upcomingCardsContainer.innerHTML = emptyHtml;
     } else {
         if (upcomingTbody) {
@@ -295,6 +359,42 @@ function renderKraTables() {
             `).join("");
         }
     }
+}
+
+async function handleUpdateSectionWeightages(e) {
+    e.preventDefault();
+    const sec1 = parseFloat(document.getElementById("adminSec1WeightInput").value) || 0;
+    const sec2 = parseFloat(document.getElementById("adminSec2WeightInput").value) || 0;
+
+    if (roundTo1Decimal(sec1 + sec2) !== 100.0) {
+        alert(`Error: Section 1 (${sec1}%) + Section 2 (${sec2}%) sum to ${sec1 + sec2}%, but must equal exactly 100%!`);
+        return;
+    }
+
+    try {
+        const res = await fetch("/api/settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                section1_weightage: sec1,
+                section2_weightage: sec2
+            })
+        });
+        const result = await res.json();
+        if (res.ok) {
+            alert(result.message);
+            await fetchSettings();
+            await loadUserDashboard(currentUserId);
+        } else {
+            alert("Error: " + result.detail);
+        }
+    } catch (err) {
+        console.error("Error updating settings:", err);
+    }
+}
+
+function roundTo1Decimal(num) {
+    return Math.round(num * 10) / 10;
 }
 
 async function updateKraOutcome(kraId, outcome, selfRating, mgrRating) {
@@ -448,7 +548,7 @@ async function fetchAnalytics() {
 function openAddKRAModal(section) {
     document.getElementById("kraSectionInput").value = section;
     document.getElementById("modalTitle").innerText = section === "PRESENT_YEAR_70" ? 
-        "Add KRA to Section 1: Key Deliverables impact Current EVA (70%)" : "Add KRA to Section 2: Key Deliverables impact Future EVA (30%)";
+        "Add KRA to Section 1: Key Deliverables impact Current EVA" : "Add KRA to Section 2: Key Deliverables impact Future EVA";
     document.getElementById("addKraModal").classList.remove("hidden");
     document.getElementById("addKraModal").classList.add("flex");
 }
@@ -518,8 +618,20 @@ async function handleCreateUser(e) {
 }
 
 async function submitAppraisalForm(status) {
+    if (!currentPmsData) return;
+    const pms = currentPmsData.pms;
+
+    // Strict 100% Weightage Sum Validation Check before submission
+    if (status === "SUBMITTED_SELF" || status === "APPROVED") {
+        if (!pms.is_overall_weightage_valid) {
+            const errs = pms.errors.join("\n\n");
+            alert(`⚠️ SUBMISSION BLOCKED: KRA Weightage Sum Error\n\n${errs}\n\nPlease adjust individual KRA weightages so that Section 1 sums to 100% and Section 2 sums to 100% before submitting.`);
+            return;
+        }
+    }
+
     try {
-        await fetch("/api/appraisals/submit", {
+        const res = await fetch("/api/appraisals/submit", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -530,8 +642,13 @@ async function submitAppraisalForm(status) {
                 manager_comments: document.getElementById("managerCommentsInput").value
             })
         });
-        alert(`Appraisal status updated to ${status}!`);
-        await loadUserDashboard(currentUserId);
+        const result = await res.json();
+        if (res.ok) {
+            alert(`Appraisal status updated to ${status}!`);
+            await loadUserDashboard(currentUserId);
+        } else {
+            alert("Submission Error: " + result.detail);
+        }
     } catch (err) {
         console.error("Error submitting appraisal:", err);
     }
@@ -558,7 +675,6 @@ function switchTab(tabId) {
 
     document.getElementById(btnMap[tabId]).className = "py-3 text-xs sm:text-sm font-semibold border-b-2 border-sky-600 text-sky-600 flex items-center gap-2 whitespace-nowrap";
 
-    // Close mobile menu if open
     const menu = document.getElementById("mobileNavMenu");
     if (menu && !menu.classList.contains("hidden")) {
         menu.classList.add("hidden");

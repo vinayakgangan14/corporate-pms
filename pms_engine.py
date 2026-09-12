@@ -1,18 +1,14 @@
 """
 Core PMS Business Logic, Calculation Engine, and Hierarchy Traversal
+Supports Administrator Dynamic Section Weightages & 100% KRA Weightage Sum Enforcement.
 """
 
 from typing import Dict, Any, List, Optional
 import sqlite3
-from database import get_db_connection
+from database import get_db_connection, get_system_settings, is_postgres
 from models import UserRole, KRASection, AppraisalStatus
 
 def calculate_kra_achievement(target: float, actual: float, max_cap: float = 120.0) -> float:
-    """
-    Calculates achievement percentage against target.
-    Caps extreme overperformance at max_cap (default 120%) to avoid distorting scores,
-    while accurately capturing true performance ratios.
-    """
     if target == 0:
         return 100.0 if actual >= 0 else 0.0
     
@@ -20,9 +16,6 @@ def calculate_kra_achievement(target: float, actual: float, max_cap: float = 120
     return round(min(raw_achieved, max_cap), 2)
 
 def determine_performance_band(composite_score: float) -> tuple[str, str]:
-    """
-    Maps composite score to Corporate Performance Band and Letter Grade.
-    """
     if composite_score >= 95.0:
         return ("Outstanding / Exceptional", "A+")
     elif composite_score >= 85.0:
@@ -36,20 +29,35 @@ def determine_performance_band(composite_score: float) -> tuple[str, str]:
 
 def compute_user_pms_score(user_id: int, year: int = 2026) -> Dict[str, Any]:
     """
-    Fetches all Present Year (70%) and Upcoming Year (30%) KRAs for a user,
-    computes weighted section scores, composite final score, performance band, and ratings.
+    Computes weighted section scores dynamically using administrator configurable section weightages.
+    Strictly validates that Section 1 KRA weightages sum to 100% and Section 2 KRA weightages sum to 100%.
     """
+    settings = get_system_settings()
+    sec1_weightage_pct = settings.get("section1_weightage", 70.0)
+    sec2_weightage_pct = settings.get("section2_weightage", 30.0)
+
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    cursor.execute(
-        """SELECT id, lever_name, description, metric_unit, target_value, actual_outcome, 
-                  weightage_percent, section, parent_kra_id, self_rating_percent, manager_rating_percent 
-           FROM kras 
-           WHERE user_id = ? AND year = ?""",
-        (user_id, year)
-    )
-    kras = [dict(row) for row in cursor.fetchall()]
+    if is_postgres():
+        cursor.execute(
+            """SELECT id, lever_name, description, metric_unit, target_value, actual_outcome, 
+                      weightage_percent, section, parent_kra_id, self_rating_percent, manager_rating_percent 
+               FROM kras 
+               WHERE user_id = %s AND year = %s""",
+            (user_id, year)
+        )
+        kras = [dict(row) for row in cursor.fetchall()]
+    else:
+        cursor.execute(
+            """SELECT id, lever_name, description, metric_unit, target_value, actual_outcome, 
+                      weightage_percent, section, parent_kra_id, self_rating_percent, manager_rating_percent 
+               FROM kras 
+               WHERE user_id = ? AND year = ?""",
+            (user_id, year)
+        )
+        kras = [dict(row) for row in cursor.fetchall()]
+        
     conn.close()
 
     present_year_kras = []
@@ -69,67 +77,73 @@ def compute_user_pms_score(user_id: int, year: int = 2026) -> Dict[str, Any]:
         achieved_pct = calculate_kra_achievement(target, actual)
         kra["achievement_percent"] = achieved_pct
         
-        # Self Rating auto-calculation based on target achievement if not manually overridden
         auto_self_rating = achieved_pct
         kra["computed_self_rating"] = kra["self_rating_percent"] if kra["self_rating_percent"] > 0 else auto_self_rating
         kra["computed_manager_rating"] = kra["manager_rating_percent"] if kra["manager_rating_percent"] > 0 else kra["computed_self_rating"]
 
         if kra["section"] == KRASection.PRESENT_YEAR_70.value:
             present_total_weight += weight
-            # Weighted contribution = Achieved % * (Weight % / 100)
             weighted_contrib = achieved_pct * (weight / 100.0)
             present_weighted_score += weighted_contrib
             kra["weighted_contribution"] = round(weighted_contrib, 2)
             present_year_kras.append(kra)
         else:
             upcoming_total_weight += weight
-            # Upcoming year targets score based on clarity & commitment rating (default actual/target or manager rating)
             weighted_contrib = achieved_pct * (weight / 100.0)
             upcoming_weighted_score += weighted_contrib
             kra["weighted_contribution"] = round(weighted_contrib, 2)
             upcoming_year_kras.append(kra)
 
-    # Standardize section scores to 100 base if weights don't perfectly sum to 100
     norm_present_score = (present_weighted_score / (present_total_weight / 100.0)) if present_total_weight > 0 else 0.0
     norm_upcoming_score = (upcoming_weighted_score / (upcoming_total_weight / 100.0)) if upcoming_total_weight > 0 else 0.0
 
-    # 70/30 Composite Weightage Formula
-    present_contribution_70 = norm_present_score * 0.70
-    upcoming_contribution_30 = norm_upcoming_score * 0.30
-    composite_score = round(present_contribution_70 + upcoming_contribution_30, 2)
+    # Dynamic Section 1 & Section 2 composite contribution
+    sec1_contrib = norm_present_score * (sec1_weightage_pct / 100.0)
+    sec2_contrib = norm_upcoming_score * (sec2_weightage_pct / 100.0)
+    composite_score = round(sec1_contrib + sec2_contrib, 2)
     
     band, grade = determine_performance_band(composite_score)
+
+    # 100% Weightage Sum Validation Check
+    is_sec1_valid = abs(round(present_total_weight, 1) - 100.0) < 0.1 if len(present_year_kras) > 0 else True
+    is_sec2_valid = abs(round(upcoming_total_weight, 1) - 100.0) < 0.1 if len(upcoming_year_kras) > 0 else True
+
+    sec1_error = None if is_sec1_valid else f"Error: Sum total KRA weightage for Section 1 is {round(present_total_weight, 1)}%, but must equal exactly 100%"
+    sec2_error = None if is_sec2_valid else f"Error: Sum total KRA weightage for Section 2 is {round(upcoming_total_weight, 1)}%, but must equal exactly 100%"
 
     return {
         "user_id": user_id,
         "year": year,
+        "section_settings": {
+            "section1_weightage_percent": sec1_weightage_pct,
+            "section2_weightage_percent": sec2_weightage_pct,
+        },
         "present_year": {
-            "section_weightage_percent": 70,
-            "total_kra_weight_sum": round(present_total_weight, 2),
+            "section_weightage_percent": sec1_weightage_pct,
+            "total_kra_weight_sum": round(present_total_weight, 1),
+            "is_valid_100_percent": is_sec1_valid,
+            "weightage_error": sec1_error,
             "raw_score": round(norm_present_score, 2),
-            "weighted_70_contribution": round(present_contribution_70, 2),
+            "weighted_contribution": round(sec1_contrib, 2),
             "kras": present_year_kras
         },
         "upcoming_year": {
-            "section_weightage_percent": 30,
-            "total_kra_weight_sum": round(upcoming_total_weight, 2),
+            "section_weightage_percent": sec2_weightage_pct,
+            "total_kra_weight_sum": round(upcoming_total_weight, 1),
+            "is_valid_100_percent": is_sec2_valid,
+            "weightage_error": sec2_error,
             "raw_score": round(norm_upcoming_score, 2),
-            "weighted_30_contribution": round(upcoming_contribution_30, 2),
+            "weighted_contribution": round(sec2_contrib, 2),
             "kras": upcoming_year_kras
         },
+        "is_overall_weightage_valid": is_sec1_valid and is_sec2_valid,
         "composite_score": composite_score,
         "performance_band": band,
         "grade": grade,
-        "warnings": [
-            f"Present Year KRAs weight sum is {present_total_weight}%, expected 100%" if round(present_total_weight, 1) != 100.0 and present_total_weight > 0 else None,
-            f"Upcoming Year KRAs weight sum is {upcoming_total_weight}%, expected 100%" if round(upcoming_total_weight, 1) != 100.0 and upcoming_total_weight > 0 else None
-        ]
+        "errors": [err for err in [sec1_error, sec2_error] if err]
     }
 
 def get_org_hierarchy_tree(root_user_id: Optional[int] = None) -> List[Dict[str, Any]]:
-    """
-    Builds nested organizational reporting tree (Admin -> MD -> GM -> HOD -> Manager -> Supervisor -> Employee).
-    """
     conn = get_db_connection()
     cursor = conn.cursor()
     
@@ -148,10 +162,13 @@ def get_org_hierarchy_tree(root_user_id: Optional[int] = None) -> List[Dict[str,
                 ELSE 7
             END
     """)
-    all_users = [dict(row) for row in cursor.fetchall()]
+    if is_postgres():
+        all_users = [dict(row) for row in cursor.fetchall()]
+    else:
+        all_users = [dict(row) for row in cursor.fetchall()]
+        
     conn.close()
 
-    # Calculate current PMS scores for each user
     for user in all_users:
         score_data = compute_user_pms_score(user["id"])
         user["composite_score"] = score_data["composite_score"]
@@ -172,14 +189,14 @@ def get_org_hierarchy_tree(root_user_id: Optional[int] = None) -> List[Dict[str,
     return tree
 
 def get_downchain_report_ids(manager_id: int) -> List[int]:
-    """
-    Recursively finds all direct and indirect down-chain report user IDs for a given manager/MD/GM/HOD.
-    """
     conn = get_db_connection()
     cursor = conn.cursor()
     
     cursor.execute("SELECT id, manager_id FROM users")
-    all_users = cursor.fetchall()
+    if is_postgres():
+        all_users = [(r['id'], r['manager_id']) for r in cursor.fetchall()]
+    else:
+        all_users = [(r[0], r[1]) for r in cursor.fetchall()]
     conn.close()
 
     children_map = {}

@@ -1,5 +1,6 @@
 """
 FastAPI REST API Server for Corporate Performance Management System (PMS)
+Includes Administrator Configurable Section Weightages & 100% KRA Weightage Validation.
 """
 
 from fastapi import FastAPI, HTTPException, Request, Body
@@ -11,7 +12,7 @@ from typing import Optional, List, Dict, Any
 import sqlite3
 import os
 
-from database import init_db, get_db_connection
+from database import init_db, get_db_connection, get_system_settings, update_system_settings, is_postgres
 from models import UserRole, KRASection, AppraisalStatus
 from pms_engine import (
     compute_user_pms_score, 
@@ -22,7 +23,7 @@ from pms_engine import (
 
 app = FastAPI(
     title="Corporate Performance Management System (PMS)",
-    description="Enterprise PMS web platform with 70/30 EVA weightage engine & down-chain org hierarchy.",
+    description="Enterprise PMS web platform with dynamic Section 1 & Section 2 weightage engine.",
     version="1.0.0"
 )
 
@@ -34,14 +35,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static directory for frontend
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 if not os.path.exists(static_dir):
     os.makedirs(static_dir)
 
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
-# Startup Event to initialize SQLite database
 @app.on_event("startup")
 def startup_db():
     init_db()
@@ -80,11 +79,15 @@ class SubmitAppraisalSchema(BaseModel):
     self_comments: Optional[str] = ""
     manager_comments: Optional[str] = ""
 
+class UpdateSettingsSchema(BaseModel):
+    section1_weightage: float
+    section2_weightage: float
+
 # --- API Endpoints ---
 
 @app.get("/")
 def read_root():
-    """Serves the main PMS Single-Page Web Application."""
+    """Serves the main PMS Single-Page Web Application with anti-caching headers."""
     index_path = os.path.join(static_dir, "index.html")
     if os.path.exists(index_path):
         with open(index_path, "r", encoding="utf-8") as f:
@@ -96,24 +99,53 @@ def read_root():
             return HTMLResponse(content=f.read(), headers=headers)
     return HTMLResponse("<h2>PMS Server Running. Static UI loading...</h2>")
 
+@app.get("/api/settings")
+def get_settings():
+    """Returns active administrator section weightages."""
+    return get_system_settings()
+
+@app.post("/api/settings")
+def update_settings(payload: UpdateSettingsSchema):
+    """Administrator endpoint to set Section 1 and Section 2 weightage percentages."""
+    total_weight = round(payload.section1_weightage + payload.section2_weightage, 1)
+    if total_weight != 100.0:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Overall section weightages sum to {total_weight}%, but Section 1 + Section 2 weightages must sum to exactly 100%!"
+        )
+    update_system_settings(payload.section1_weightage, payload.section2_weightage)
+    return {"status": "success", "message": f"Section weightages updated to Section 1: {payload.section1_weightage}% / Section 2: {payload.section2_weightage}%"}
+
 @app.get("/api/users")
 def list_users():
-    """Returns all users in the system with their reporting managers."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("""
-        SELECT u.id, u.name, u.email, u.role, u.designation, u.manager_id, 
-               m.name as manager_name, m.role as manager_role,
-               d.name as department_name
-        FROM users u
-        LEFT JOIN users m ON u.manager_id = m.id
-        LEFT JOIN departments d ON u.department_id = d.id
-        ORDER BY u.id ASC
-    """)
-    users = [dict(row) for row in cursor.fetchall()]
+    
+    if is_postgres():
+        cursor.execute("""
+            SELECT u.id, u.name, u.email, u.role, u.designation, u.manager_id, 
+                   m.name as manager_name, m.role as manager_role,
+                   d.name as department_name
+            FROM users u
+            LEFT JOIN users m ON u.manager_id = m.id
+            LEFT JOIN departments d ON u.department_id = d.id
+            ORDER BY u.id ASC
+        """)
+        users = [dict(row) for row in cursor.fetchall()]
+    else:
+        cursor.execute("""
+            SELECT u.id, u.name, u.email, u.role, u.designation, u.manager_id, 
+                   m.name as manager_name, m.role as manager_role,
+                   d.name as department_name
+            FROM users u
+            LEFT JOIN users m ON u.manager_id = m.id
+            LEFT JOIN departments d ON u.department_id = d.id
+            ORDER BY u.id ASC
+        """)
+        users = [dict(row) for row in cursor.fetchall()]
+        
     conn.close()
 
-    # Attach summary scores
     for u in users:
         score_data = compute_user_pms_score(u["id"])
         u["composite_score"] = score_data["composite_score"]
@@ -124,26 +156,33 @@ def list_users():
 
 @app.post("/api/users")
 def create_user(user: CreateUserSchema):
-    """Admin endpoint to create Managing Director (MD), GMs, HODs, Managers, Supervisors, or Staff."""
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute(
-            """INSERT INTO users (name, email, role, designation, department_id, manager_id)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (user.name, user.email, user.role, user.designation, user.department_id, user.manager_id)
-        )
+        if is_postgres():
+            cursor.execute(
+                """INSERT INTO users (name, email, role, designation, department_id, manager_id)
+                   VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
+                (user.name, user.email, user.role, user.designation, user.department_id, user.manager_id)
+            )
+            user_id = cursor.fetchone()['id']
+        else:
+            cursor.execute(
+                """INSERT INTO users (name, email, role, designation, department_id, manager_id)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (user.name, user.email, user.role, user.designation, user.department_id, user.manager_id)
+            )
+            user_id = cursor.lastrowid
+            
         conn.commit()
-        user_id = cursor.lastrowid
         conn.close()
         return {"status": "success", "user_id": user_id, "message": f"User '{user.name}' created successfully as {user.role}"}
-    except sqlite3.IntegrityError as e:
+    except Exception as e:
         conn.close()
-        raise HTTPException(status_code=400, detail=f"Email '{user.email}' already exists or database constraint failed.")
+        raise HTTPException(status_code=400, detail=f"User creation failed: {e}")
 
 @app.get("/api/departments")
 def list_departments():
-    """Returns all company departments."""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT id, name, code FROM departments")
@@ -153,58 +192,67 @@ def list_departments():
 
 @app.get("/api/hierarchy")
 def get_hierarchy():
-    """Returns full organizational tree with reporting links and scores."""
     return get_org_hierarchy_tree()
 
 @app.get("/api/users/{user_id}/pms")
 def get_user_pms_dashboard(user_id: int, year: int = 2026):
-    """
-    Fetches comprehensive PMS appraisal dashboard for a user:
-    - User Details & Reporting Manager details
-    - 70% Present Year EVA KRAs (Target vs Actual, Achievement %, Self Rating, Weighted Score)
-    - 30% Upcoming Year Objectives
-    - Overall 70/30 Composite Score & Performance Band Grade
-    """
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("""
-        SELECT u.id, u.name, u.email, u.role, u.designation, u.manager_id, 
-               m.name as manager_name, m.email as manager_email, m.role as manager_role,
-               d.name as department_name
-        FROM users u
-        LEFT JOIN users m ON u.manager_id = m.id
-        LEFT JOIN departments d ON u.department_id = d.id
-        WHERE u.id = ?
-    """, (user_id,))
-    user_row = cursor.fetchone()
     
-    if not user_row:
-        conn.close()
-        raise HTTPException(status_code=404, detail="User not found")
+    if is_postgres():
+        cursor.execute("""
+            SELECT u.id, u.name, u.email, u.role, u.designation, u.manager_id, 
+                   m.name as manager_name, m.email as manager_email, m.role as manager_role,
+                   d.name as department_name
+            FROM users u
+            LEFT JOIN users m ON u.manager_id = m.id
+            LEFT JOIN departments d ON u.department_id = d.id
+            WHERE u.id = %s
+        """, (user_id,))
+        user_row = cursor.fetchone()
         
-    user_info = dict(user_row)
-    
-    # Fetch direct reports if any
-    cursor.execute("""
-        SELECT u.id, u.name, u.email, u.role, u.designation
-        FROM users u
-        WHERE u.manager_id = ?
-    """, (user_id,))
-    direct_reports = [dict(row) for row in cursor.fetchall()]
-    
-    # Fetch downchain reports
-    downchain_ids = get_downchain_report_ids(user_id)
-    
-    # Fetch current appraisal record status
-    cursor.execute("SELECT status, self_comments, manager_comments FROM appraisals WHERE user_id = ? AND year = ?", (user_id, year))
-    appraisal_row = cursor.fetchone()
-    appraisal_meta = dict(appraisal_row) if appraisal_row else {"status": "DRAFT", "self_comments": "", "manager_comments": ""}
+        if not user_row:
+            conn.close()
+            raise HTTPException(status_code=404, detail="User not found")
+            
+        user_info = dict(user_row)
+        
+        cursor.execute("SELECT u.id, u.name, u.email, u.role, u.designation FROM users u WHERE u.manager_id = %s", (user_id,))
+        direct_reports = [dict(row) for row in cursor.fetchall()]
+        
+        cursor.execute("SELECT status, self_comments, manager_comments FROM appraisals WHERE user_id = %s AND year = %s", (user_id, year))
+        appraisal_row = cursor.fetchone()
+        appraisal_meta = dict(appraisal_row) if appraisal_row else {"status": "DRAFT", "self_comments": "", "manager_comments": ""}
+    else:
+        cursor.execute("""
+            SELECT u.id, u.name, u.email, u.role, u.designation, u.manager_id, 
+                   m.name as manager_name, m.email as manager_email, m.role as manager_role,
+                   d.name as department_name
+            FROM users u
+            LEFT JOIN users m ON u.manager_id = m.id
+            LEFT JOIN departments d ON u.department_id = d.id
+            WHERE u.id = ?
+        """, (user_id,))
+        user_row = cursor.fetchone()
+        
+        if not user_row:
+            conn.close()
+            raise HTTPException(status_code=404, detail="User not found")
+            
+        user_info = dict(user_row)
+        
+        cursor.execute("SELECT u.id, u.name, u.email, u.role, u.designation FROM users u WHERE u.manager_id = ?", (user_id,))
+        direct_reports = [dict(row) for row in cursor.fetchall()]
+        
+        cursor.execute("SELECT status, self_comments, manager_comments FROM appraisals WHERE user_id = ? AND year = ?", (user_id, year))
+        appraisal_row = cursor.fetchone()
+        appraisal_meta = dict(appraisal_row) if appraisal_row else {"status": "DRAFT", "self_comments": "", "manager_comments": ""}
 
+    downchain_ids = get_downchain_report_ids(user_id)
     conn.close()
 
     pms_scores = compute_user_pms_score(user_id, year)
 
-    # Attach direct report summary for managers/GMs/MD
     reports_pms = []
     for r in direct_reports:
         r_score = compute_user_pms_score(r["id"], year)
@@ -228,98 +276,161 @@ def get_user_pms_dashboard(user_id: int, year: int = 2026):
 
 @app.post("/api/kras")
 def create_kra(kra: CreateKRASchema):
-    """Adds a new KRA / Target Objective under 70% Present or 30% Upcoming year section."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        """INSERT INTO kras (user_id, year, section, lever_name, description, metric_unit, target_value, actual_outcome, weightage_percent, parent_kra_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (kra.user_id, kra.year, kra.section, kra.lever_name, kra.description, kra.metric_unit, kra.target_value, kra.actual_outcome, kra.weightage_percent, kra.parent_kra_id)
-    )
+    if is_postgres():
+        cursor.execute(
+            """INSERT INTO kras (user_id, year, section, lever_name, description, metric_unit, target_value, actual_outcome, weightage_percent, parent_kra_id)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+            (kra.user_id, kra.year, kra.section, kra.lever_name, kra.description, kra.metric_unit, kra.target_value, kra.actual_outcome, kra.weightage_percent, kra.parent_kra_id)
+        )
+        kra_id = cursor.fetchone()['id']
+    else:
+        cursor.execute(
+            """INSERT INTO kras (user_id, year, section, lever_name, description, metric_unit, target_value, actual_outcome, weightage_percent, parent_kra_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (kra.user_id, kra.year, kra.section, kra.lever_name, kra.description, kra.metric_unit, kra.target_value, kra.actual_outcome, kra.weightage_percent, kra.parent_kra_id)
+        )
+        kra_id = cursor.lastrowid
+        
     conn.commit()
-    kra_id = cursor.lastrowid
     conn.close()
     return {"status": "success", "kra_id": kra_id, "message": "KRA added successfully"}
 
 @app.put("/api/kras/{kra_id}")
 def update_kra(kra_id: int, payload: UpdateKRAOutcomeSchema):
-    """Updates actual outcome achieved against target, self rating %, or manager rating %."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        """UPDATE kras 
-           SET actual_outcome = ?, self_rating_percent = ?, manager_rating_percent = ?
-           WHERE id = ?""",
-        (payload.actual_outcome, payload.self_rating_percent, payload.manager_rating_percent, kra_id)
-    )
+    if is_postgres():
+        cursor.execute(
+            """UPDATE kras 
+               SET actual_outcome = %s, self_rating_percent = %s, manager_rating_percent = %s
+               WHERE id = %s""",
+            (payload.actual_outcome, payload.self_rating_percent, payload.manager_rating_percent, kra_id)
+        )
+    else:
+        cursor.execute(
+            """UPDATE kras 
+               SET actual_outcome = ?, self_rating_percent = ?, manager_rating_percent = ?
+               WHERE id = ?""",
+            (payload.actual_outcome, payload.self_rating_percent, payload.manager_rating_percent, kra_id)
+        )
+        
     conn.commit()
     conn.close()
     return {"status": "success", "message": "KRA performance outcome updated successfully"}
 
 @app.delete("/api/kras/{kra_id}")
 def delete_kra(kra_id: int):
-    """Deletes a KRA."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM kras WHERE id = ?", (kra_id,))
+    if is_postgres():
+        cursor.execute("DELETE FROM kras WHERE id = %s", (kra_id,))
+    else:
+        cursor.execute("DELETE FROM kras WHERE id = ?", (kra_id,))
     conn.commit()
     conn.close()
     return {"status": "success", "message": "KRA deleted successfully"}
 
 @app.post("/api/appraisals/submit")
 def submit_appraisal(payload: SubmitAppraisalSchema):
-    """Submits self appraisal or manager evaluation, updating appraisal status in database."""
+    """
+    Submits self appraisal or manager evaluation.
+    Enforces strict validation: Section 1 KRA weightages MUST sum to 100% and Section 2 KRA weightages MUST sum to 100%.
+    """
+    score_data = compute_user_pms_score(payload.user_id, payload.year)
+    
+    # Enforce 100% weightage sum check on formal submission / approval
+    if payload.status in ["SUBMITTED_SELF", "APPROVED"]:
+        if not score_data["is_overall_weightage_valid"]:
+            error_details = " | ".join(score_data["errors"])
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot submit appraisal: {error_details}. Please adjust KRA weightages to sum to exactly 100% before submitting."
+            )
+
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    score_data = compute_user_pms_score(payload.user_id, payload.year)
-    
-    cursor.execute("""
-        INSERT INTO appraisals (user_id, year, status, present_year_score, upcoming_year_score, composite_score, performance_band, grade, self_comments, manager_comments)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(user_id, year) DO UPDATE SET
-            status = excluded.status,
-            present_year_score = excluded.present_year_score,
-            upcoming_year_score = excluded.upcoming_year_score,
-            composite_score = excluded.composite_score,
-            performance_band = excluded.performance_band,
-            grade = excluded.grade,
-            self_comments = COALESCE(NULLIF(excluded.self_comments, ''), self_comments),
-            manager_comments = COALESCE(NULLIF(excluded.manager_comments, ''), manager_comments),
-            updated_at = CURRENT_TIMESTAMP
-    """, (
-        payload.user_id, 
-        payload.year, 
-        payload.status, 
-        score_data["present_year"]["raw_score"], 
-        score_data["upcoming_year"]["raw_score"], 
-        score_data["composite_score"], 
-        score_data["performance_band"], 
-        score_data["grade"], 
-        payload.self_comments, 
-        payload.manager_comments
-    ))
+    if is_postgres():
+        cursor.execute("""
+            INSERT INTO appraisals (user_id, year, status, present_year_score, upcoming_year_score, composite_score, performance_band, grade, self_comments, manager_comments)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT(user_id, year) DO UPDATE SET
+                status = EXCLUDED.status,
+                present_year_score = EXCLUDED.present_year_score,
+                upcoming_year_score = EXCLUDED.upcoming_year_score,
+                composite_score = EXCLUDED.composite_score,
+                performance_band = EXCLUDED.performance_band,
+                grade = EXCLUDED.grade,
+                self_comments = COALESCE(NULLIF(EXCLUDED.self_comments, ''), appraisals.self_comments),
+                manager_comments = COALESCE(NULLIF(EXCLUDED.manager_comments, ''), appraisals.manager_comments),
+                updated_at = CURRENT_TIMESTAMP
+        """, (
+            payload.user_id, 
+            payload.year, 
+            payload.status, 
+            score_data["present_year"]["raw_score"], 
+            score_data["upcoming_year"]["raw_score"], 
+            score_data["composite_score"], 
+            score_data["performance_band"], 
+            score_data["grade"], 
+            payload.self_comments, 
+            payload.manager_comments
+        ))
+    else:
+        cursor.execute("""
+            INSERT INTO appraisals (user_id, year, status, present_year_score, upcoming_year_score, composite_score, performance_band, grade, self_comments, manager_comments)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, year) DO UPDATE SET
+                status = excluded.status,
+                present_year_score = excluded.present_year_score,
+                upcoming_year_score = excluded.upcoming_year_score,
+                composite_score = excluded.composite_score,
+                performance_band = excluded.performance_band,
+                grade = excluded.grade,
+                self_comments = COALESCE(NULLIF(excluded.self_comments, ''), self_comments),
+                manager_comments = COALESCE(NULLIF(excluded.manager_comments, ''), manager_comments),
+                updated_at = CURRENT_TIMESTAMP
+        """, (
+            payload.user_id, 
+            payload.year, 
+            payload.status, 
+            score_data["present_year"]["raw_score"], 
+            score_data["upcoming_year"]["raw_score"], 
+            score_data["composite_score"], 
+            score_data["performance_band"], 
+            score_data["grade"], 
+            payload.self_comments, 
+            payload.manager_comments
+        ))
+        
     conn.commit()
     conn.close()
     return {"status": "success", "message": f"Appraisal status updated to '{payload.status}'"}
 
 @app.get("/api/analytics")
 def get_executive_analytics():
-    """Returns company-wide executive analytics for Admin and Managing Director (MD)."""
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    cursor.execute("SELECT COUNT(*) FROM users WHERE role != 'ADMIN'")
-    total_employees = cursor.fetchone()[0]
-    
-    cursor.execute("SELECT id, name, role FROM users WHERE role != 'ADMIN'")
-    users = cursor.fetchall()
+    if is_postgres():
+        cursor.execute("SELECT COUNT(*) FROM users WHERE role != 'ADMIN'")
+        total_employees = cursor.fetchone()['count']
+        cursor.execute("SELECT id, name, role FROM users WHERE role != 'ADMIN'")
+        users = cursor.fetchall()
+    else:
+        cursor.execute("SELECT COUNT(*) FROM users WHERE role != 'ADMIN'")
+        total_employees = cursor.fetchone()[0]
+        cursor.execute("SELECT id, name, role FROM users WHERE role != 'ADMIN'")
+        users = cursor.fetchall()
     
     scores = []
     bands = {"Outstanding / Exceptional": 0, "Exceeds Expectations": 0, "Meets Expectations": 0, "Needs Improvement": 0, "Unsatisfactory": 0}
     
     for u in users:
-        score_data = compute_user_pms_score(u[0])
+        uid = u['id'] if is_postgres() else u[0]
+        score_data = compute_user_pms_score(uid)
         score = score_data["composite_score"]
         band = score_data["performance_band"]
         scores.append(score)
