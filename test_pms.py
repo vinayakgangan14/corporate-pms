@@ -32,24 +32,39 @@ def test_pms_calculation_and_hierarchy():
     
     print("[PASS] Performance band & grade mapping passed.")
 
-    # 3. Test MD PMS Score Calculation (70% Present Year EVA + 30% Upcoming Year Objectives)
+    # 3. Test MD PMS Score Calculation (MD: 70% Present Year EVA + 30% Upcoming Year Objectives)
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT id FROM users WHERE email = 'md@company.com'")
     md_user = cursor.fetchone()
     assert md_user is not None, "MD user seed not found"
     md_id = md_user[0]
+    
+    cursor.execute("SELECT id FROM users WHERE email = 'gm.ops@company.com'")
+    gm_user = cursor.fetchone()
+    assert gm_user is not None, "GM user seed not found"
+    gm_id = gm_user[0]
+
+    cursor.execute("SELECT id FROM users WHERE email = 'emp.john@company.com'")
+    emp_user = cursor.fetchone()
+    assert emp_user is not None, "Employee user seed not found"
+    emp_id = emp_user[0]
     conn.close()
 
-    pms_data = compute_user_pms_score(md_id, 2026)
-    
-    assert "present_year" in pms_data
-    assert "upcoming_year" in pms_data
-    assert pms_data["present_year"]["section_weightage_percent"] == 70
-    assert pms_data["upcoming_year"]["section_weightage_percent"] == 30
-    assert pms_data["composite_score"] > 0, "Composite score should be computed"
+    md_pms = compute_user_pms_score(md_id, 2026)
+    assert md_pms["present_year"]["section_weightage_percent"] == 70.0
+    assert md_pms["upcoming_year"]["section_weightage_percent"] == 30.0
+    print(f"[PASS] MD 70/30 Position Weightage Verified: Present 70%, Upcoming 30%, Composite={md_pms['composite_score']}%")
 
-    print(f"[PASS] MD 70/30 Score Test Passed: Present 70% Raw={pms_data['present_year']['raw_score']}%, Upcoming 30% Raw={pms_data['upcoming_year']['raw_score']}%, Composite Score={pms_data['composite_score']}%, Grade={pms_data['grade']}")
+    gm_pms = compute_user_pms_score(gm_id, 2026)
+    assert gm_pms["present_year"]["section_weightage_percent"] == 50.0
+    assert gm_pms["upcoming_year"]["section_weightage_percent"] == 50.0
+    print(f"[PASS] GM 50/50 Position Weightage Verified: Present 50%, Upcoming 50%")
+
+    emp_pms = compute_user_pms_score(emp_id, 2026)
+    assert emp_pms["present_year"]["section_weightage_percent"] == 30.0
+    assert emp_pms["upcoming_year"]["section_weightage_percent"] == 70.0
+    print(f"[PASS] Staff/Employee 30/70 Position Weightage Verified: Present 30%, Upcoming 70%")
 
     # 4. Test Organizational Hierarchy Tree
     tree = get_org_hierarchy_tree()

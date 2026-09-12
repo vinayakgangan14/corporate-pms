@@ -46,12 +46,31 @@ def init_db():
         if is_postgres():
             cursor.execute(CREATE_TABLES_SQL_PG)
             conn.commit()
+            # Migration checks for postgres
+            try:
+                cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS sec1_weight DOUBLE PRECISION;")
+                cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS sec2_weight DOUBLE PRECISION;")
+                conn.commit()
+            except Exception as me:
+                conn.rollback()
+                print(f"[DATABASE MIGRATION NOTICE] Postgres columns already exist or migrated: {me}")
         else:
             cursor.executescript(CREATE_TABLES_SQL_SQLITE)
+            conn.commit()
+            # Migration checks for SQLite
+            try:
+                cursor.execute("ALTER TABLE users ADD COLUMN sec1_weight REAL;")
+            except Exception:
+                pass
+            try:
+                cursor.execute("ALTER TABLE users ADD COLUMN sec2_weight REAL;")
+            except Exception:
+                pass
             conn.commit()
             
         conn.close()
         init_default_settings()
+        init_default_role_settings()
         seed_data_if_empty()
     except Exception as e:
         print(f"[DATABASE WARNING] Exception during init_db: {e}")
@@ -72,6 +91,153 @@ def init_default_settings():
         for key, val in defaults:
             cursor.execute("INSERT OR IGNORE INTO system_settings (key, value) VALUES (?, ?)", (key, val))
             
+    conn.commit()
+    conn.close()
+
+def init_default_role_settings():
+    """Initializes default section weightages per organizational position / role."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    role_defaults = [
+        ("MD", 70.0, 30.0),
+        ("GM", 50.0, 50.0),
+        ("HOD", 40.0, 60.0),
+        ("MANAGER", 30.0, 70.0),
+        ("SUPERVISOR", 30.0, 70.0),
+        ("EMPLOYEE", 30.0, 70.0),
+        ("ADMIN", 70.0, 30.0)
+    ]
+    
+    if is_postgres():
+        for r, w1, w2 in role_defaults:
+            cursor.execute(
+                "INSERT INTO role_settings (role, section1_weight, section2_weight) VALUES (%s, %s, %s) ON CONFLICT (role) DO NOTHING",
+                (r, w1, w2)
+            )
+    else:
+        for r, w1, w2 in role_defaults:
+            cursor.execute(
+                "INSERT OR IGNORE INTO role_settings (role, section1_weight, section2_weight) VALUES (?, ?, ?)",
+                (r, w1, w2)
+            )
+            
+    conn.commit()
+    conn.close()
+
+def get_role_settings() -> dict:
+    """Returns mapping of all roles to their configured section weightages."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT role, section1_weight, section2_weight FROM role_settings")
+    rows = cursor.fetchall()
+    conn.close()
+    
+    results = {}
+    for r in rows:
+        if is_postgres():
+            results[r['role']] = {
+                "section1_weight": float(r['section1_weight']),
+                "section2_weight": float(r['section2_weight'])
+            }
+        else:
+            results[r[0]] = {
+                "section1_weight": float(r[1]),
+                "section2_weight": float(r[2])
+            }
+            
+    # Ensure standard defaults if any role missing
+    defaults = {
+        "MD": {"section1_weight": 70.0, "section2_weight": 30.0},
+        "GM": {"section1_weight": 50.0, "section2_weight": 50.0},
+        "HOD": {"section1_weight": 40.0, "section2_weight": 60.0},
+        "MANAGER": {"section1_weight": 30.0, "section2_weight": 70.0},
+        "SUPERVISOR": {"section1_weight": 30.0, "section2_weight": 70.0},
+        "EMPLOYEE": {"section1_weight": 30.0, "section2_weight": 70.0},
+        "ADMIN": {"section1_weight": 70.0, "section2_weight": 30.0}
+    }
+    for k, v in defaults.items():
+        if k not in results:
+            results[k] = v
+            
+    return results
+
+def update_role_setting(role_name: str, sec1: float, sec2: float):
+    """Updates Section 1 & Section 2 weightages for a specific position / role."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    if is_postgres():
+        cursor.execute(
+            """INSERT INTO role_settings (role, section1_weight, section2_weight) 
+               VALUES (%s, %s, %s) 
+               ON CONFLICT (role) DO UPDATE SET section1_weight = EXCLUDED.section1_weight, section2_weight = EXCLUDED.section2_weight""",
+            (role_name, sec1, sec2)
+        )
+    else:
+        cursor.execute(
+            """INSERT INTO role_settings (role, section1_weight, section2_weight) 
+               VALUES (?, ?, ?) 
+               ON CONFLICT(role) DO UPDATE SET section1_weight = excluded.section1_weight, section2_weight = excluded.section2_weight""",
+            (role_name, sec1, sec2)
+        )
+        
+    conn.commit()
+    conn.close()
+
+def get_user_effective_weightages(user_id: int) -> dict:
+    """
+    Fetches the effective Section 1 and Section 2 weightages for a given user.
+    Prioritizes individual user overrides (sec1_weight, sec2_weight), then position/role default, then 70/30 system fallback.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    if is_postgres():
+        cursor.execute("SELECT role, sec1_weight, sec2_weight FROM users WHERE id = %s", (user_id,))
+        row = cursor.fetchone()
+    else:
+        cursor.execute("SELECT role, sec1_weight, sec2_weight FROM users WHERE id = ?", (user_id,))
+        row = cursor.fetchone()
+        
+    conn.close()
+    
+    if not row:
+        return {"section1_weight": 70.0, "section2_weight": 30.0, "source": "default", "role": "EMPLOYEE"}
+        
+    role = row['role'] if is_postgres() else row[0]
+    sec1_override = row['sec1_weight'] if is_postgres() else row[1]
+    sec2_override = row['sec2_weight'] if is_postgres() else row[2]
+    
+    if sec1_override is not None and sec2_override is not None:
+        return {
+            "section1_weight": float(sec1_override),
+            "section2_weight": float(sec2_override),
+            "source": "custom_override",
+            "role": role
+        }
+        
+    role_settings = get_role_settings()
+    role_weight = role_settings.get(role, {"section1_weight": 70.0, "section2_weight": 30.0})
+    
+    return {
+        "section1_weight": float(role_weight["section1_weight"]),
+        "section2_weight": float(role_weight["section2_weight"]),
+        "source": "position_role",
+        "role": role
+    }
+
+def update_user_custom_weightages(user_id: int, sec1: Optional[float], sec2: Optional[float]):
+    """Sets custom section weightages for an individual user, or clears them to inherit role default if None."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    if is_postgres():
+        cursor.execute("UPDATE users SET sec1_weight = %s, sec2_weight = %s WHERE id = %s", (sec1, sec2, user_id))
+    else:
+        cursor.execute("UPDATE users SET sec1_weight = ?, sec2_weight = ? WHERE id = ?", (sec1, sec2, user_id))
+        
     conn.commit()
     conn.close()
 

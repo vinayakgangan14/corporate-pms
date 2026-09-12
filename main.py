@@ -12,7 +12,17 @@ from typing import Optional, List, Dict, Any
 import sqlite3
 import os
 
-from database import init_db, get_db_connection, get_system_settings, update_system_settings, is_postgres
+from database import (
+    init_db, 
+    get_db_connection, 
+    get_system_settings, 
+    update_system_settings, 
+    get_role_settings, 
+    update_role_setting, 
+    get_user_effective_weightages, 
+    update_user_custom_weightages,
+    is_postgres
+)
 from models import UserRole, KRASection, AppraisalStatus
 from pms_engine import (
     compute_user_pms_score, 
@@ -23,7 +33,7 @@ from pms_engine import (
 
 app = FastAPI(
     title="Corporate Performance Management System (PMS)",
-    description="Enterprise PMS web platform with dynamic Section 1 & Section 2 weightage engine.",
+    description="Enterprise PMS web platform with position-based and dynamic Section 1 & Section 2 weightage engine.",
     version="1.0.0"
 )
 
@@ -83,6 +93,15 @@ class UpdateSettingsSchema(BaseModel):
     section1_weightage: float
     section2_weightage: float
 
+class UpdateRoleWeightageSchema(BaseModel):
+    role: str
+    section1_weight: float
+    section2_weight: float
+
+class UpdateUserWeightagesSchema(BaseModel):
+    section1_weight: Optional[float] = None
+    section2_weight: Optional[float] = None
+
 # --- API Endpoints ---
 
 @app.get("/")
@@ -101,12 +120,12 @@ def read_root():
 
 @app.get("/api/settings")
 def get_settings():
-    """Returns active administrator section weightages."""
+    """Returns active administrator system section weightages."""
     return get_system_settings()
 
 @app.post("/api/settings")
 def update_settings(payload: UpdateSettingsSchema):
-    """Administrator endpoint to set Section 1 and Section 2 weightage percentages."""
+    """Administrator endpoint to set system default Section 1 and Section 2 weightage percentages."""
     total_weight = round(payload.section1_weightage + payload.section2_weightage, 1)
     if total_weight != 100.0:
         raise HTTPException(
@@ -116,6 +135,46 @@ def update_settings(payload: UpdateSettingsSchema):
     update_system_settings(payload.section1_weightage, payload.section2_weightage)
     return {"status": "success", "message": f"Section weightages updated to Section 1: {payload.section1_weightage}% / Section 2: {payload.section2_weightage}%"}
 
+@app.get("/api/settings/roles")
+def get_all_role_settings():
+    """Returns configured section weightages matrix for all organizational roles/positions (MD, GM, HOD, etc.)."""
+    return get_role_settings()
+
+@app.post("/api/settings/roles")
+def update_role_settings(payload: UpdateRoleWeightageSchema):
+    """Administrator endpoint to update Section 1 and Section 2 weightages for a specific position/role."""
+    total_weight = round(payload.section1_weight + payload.section2_weight, 1)
+    if total_weight != 100.0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Weightages for role '{payload.role}' sum to {total_weight}%, but Section 1 + Section 2 weightages must sum to exactly 100%!"
+        )
+    update_role_setting(payload.role, payload.section1_weight, payload.section2_weight)
+    return {
+        "status": "success",
+        "message": f"Updated position weightage for '{payload.role}' to Section 1: {payload.section1_weight}% / Section 2: {payload.section2_weight}%"
+    }
+
+@app.put("/api/users/{user_id}/weightages")
+def update_user_weightages(user_id: int, payload: UpdateUserWeightagesSchema):
+    """Administrator endpoint to set custom section weightages for an individual user, or reset to role default if None."""
+    if payload.section1_weight is not None and payload.section2_weight is not None:
+        if payload.section1_weight < 0 or payload.section2_weight < 0:
+            # Reset to role default
+            update_user_custom_weightages(user_id, None, None)
+            return {"status": "success", "message": f"User #{user_id} custom weightages reset to role default."}
+        total_weight = round(payload.section1_weight + payload.section2_weight, 1)
+        if total_weight != 100.0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Custom weightages for user #{user_id} sum to {total_weight}%, but must sum to exactly 100%!"
+            )
+        update_user_custom_weightages(user_id, payload.section1_weight, payload.section2_weight)
+        return {"status": "success", "message": f"User #{user_id} custom weightages updated to Section 1: {payload.section1_weight}% / Section 2: {payload.section2_weight}%"}
+    else:
+        update_user_custom_weightages(user_id, None, None)
+        return {"status": "success", "message": f"User #{user_id} custom weightages cleared to inherit position role default."}
+
 @app.get("/api/users")
 def list_users():
     conn = get_db_connection()
@@ -123,7 +182,7 @@ def list_users():
     
     if is_postgres():
         cursor.execute("""
-            SELECT u.id, u.name, u.email, u.role, u.designation, u.manager_id, 
+            SELECT u.id, u.name, u.email, u.role, u.designation, u.manager_id, u.sec1_weight, u.sec2_weight,
                    m.name as manager_name, m.role as manager_role,
                    d.name as department_name
             FROM users u
@@ -134,7 +193,7 @@ def list_users():
         users = [dict(row) for row in cursor.fetchall()]
     else:
         cursor.execute("""
-            SELECT u.id, u.name, u.email, u.role, u.designation, u.manager_id, 
+            SELECT u.id, u.name, u.email, u.role, u.designation, u.manager_id, u.sec1_weight, u.sec2_weight,
                    m.name as manager_name, m.role as manager_role,
                    d.name as department_name
             FROM users u
@@ -145,6 +204,19 @@ def list_users():
         users = [dict(row) for row in cursor.fetchall()]
         
     conn.close()
+
+    for u in users:
+        eff_weight = get_user_effective_weightages(u["id"])
+        u["effective_section1_weight"] = eff_weight["section1_weight"]
+        u["effective_section2_weight"] = eff_weight["section2_weight"]
+        u["weightage_source"] = eff_weight["source"]
+        
+        score_data = compute_user_pms_score(u["id"])
+        u["composite_score"] = score_data["composite_score"]
+        u["performance_band"] = score_data["performance_band"]
+        u["grade"] = score_data["grade"]
+
+    return users
 
     for u in users:
         score_data = compute_user_pms_score(u["id"])

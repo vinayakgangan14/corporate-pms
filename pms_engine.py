@@ -5,7 +5,7 @@ Supports Administrator Dynamic Section Weightages & 100% KRA Weightage Sum Enfor
 
 from typing import Dict, Any, List, Optional
 import sqlite3
-from database import get_db_connection, get_system_settings, is_postgres
+from database import get_db_connection, get_system_settings, get_user_effective_weightages, is_postgres
 from models import UserRole, KRASection, AppraisalStatus
 
 def calculate_kra_achievement(target: float, actual: float, max_cap: float = 120.0) -> float:
@@ -29,12 +29,12 @@ def determine_performance_band(composite_score: float) -> tuple[str, str]:
 
 def compute_user_pms_score(user_id: int, year: int = 2026) -> Dict[str, Any]:
     """
-    Computes weighted section scores dynamically using administrator configurable section weightages.
+    Computes weighted section scores dynamically using position-based (MD 70/30, GM 50/50, etc.) or user-configured section weightages.
     Strictly validates that Section 1 KRA weightages sum to 100% and Section 2 KRA weightages sum to 100%.
     """
-    settings = get_system_settings()
-    sec1_weightage_pct = settings.get("section1_weightage", 70.0)
-    sec2_weightage_pct = settings.get("section2_weightage", 30.0)
+    user_weightages = get_user_effective_weightages(user_id)
+    sec1_weightage_pct = user_weightages["section1_weight"]
+    sec2_weightage_pct = user_weightages["section2_weight"]
 
     conn = get_db_connection()
     cursor = conn.cursor()

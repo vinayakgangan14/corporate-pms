@@ -30,6 +30,12 @@ CREATE TABLE IF NOT EXISTS system_settings (
     value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS role_settings (
+    role TEXT PRIMARY KEY,
+    section1_weight REAL NOT NULL DEFAULT 70.0,
+    section2_weight REAL NOT NULL DEFAULT 30.0
+);
+
 CREATE TABLE IF NOT EXISTS departments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
@@ -44,6 +50,8 @@ CREATE TABLE IF NOT EXISTS users (
     designation TEXT NOT NULL,
     department_id INTEGER,
     manager_id INTEGER,
+    sec1_weight REAL,
+    sec2_weight REAL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (department_id) REFERENCES departments(id),
     FOREIGN KEY (manager_id) REFERENCES users(id)
@@ -92,6 +100,12 @@ CREATE TABLE IF NOT EXISTS system_settings (
     value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS role_settings (
+    role VARCHAR(50) PRIMARY KEY,
+    section1_weight DOUBLE PRECISION NOT NULL DEFAULT 70.0,
+    section2_weight DOUBLE PRECISION NOT NULL DEFAULT 30.0
+);
+
 CREATE TABLE IF NOT EXISTS departments (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL UNIQUE,
@@ -106,6 +120,8 @@ CREATE TABLE IF NOT EXISTS users (
     designation VARCHAR(255) NOT NULL,
     department_id INTEGER REFERENCES departments(id),
     manager_id INTEGER REFERENCES users(id),
+    sec1_weight DOUBLE PRECISION,
+    sec2_weight DOUBLE PRECISION,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

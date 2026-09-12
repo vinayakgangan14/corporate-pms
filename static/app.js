@@ -7,30 +7,117 @@ let allUsers = [];
 let currentUserId = null;
 let currentPmsData = null;
 let activeSettings = { section1_weightage: 70.0, section2_weightage: 30.0 };
+let roleSettings = {};
 
 document.addEventListener("DOMContentLoaded", () => {
     initApp();
 });
 
 async function initApp() {
-    await fetchSettings();
+    await fetchRoleSettings();
     await fetchUsers();
     await fetchDepartments();
     lucide.createIcons();
 }
 
-async function fetchSettings() {
+async function fetchRoleSettings() {
     try {
-        const res = await fetch("/api/settings");
-        activeSettings = await res.json();
-        const sec1Inp = document.getElementById("adminSec1WeightInput");
-        const sec2Inp = document.getElementById("adminSec2WeightInput");
-        if (sec1Inp && sec2Inp) {
-            sec1Inp.value = activeSettings.section1_weightage;
-            sec2Inp.value = activeSettings.section2_weightage;
+        const res = await fetch("/api/settings/roles");
+        roleSettings = await res.json();
+        renderRoleSettingsTable();
+    } catch (err) {
+        console.error("Error loading role settings:", err);
+    }
+}
+
+function renderRoleSettingsTable() {
+    const tbody = document.getElementById("roleWeightagesTableBody");
+    if (!tbody) return;
+
+    const roleLabels = {
+        "MD": "Managing Director (MD)",
+        "GM": "General Manager (GM)",
+        "HOD": "Head of Department (HOD)",
+        "MANAGER": "Manager",
+        "SUPERVISOR": "Supervisor",
+        "EMPLOYEE": "Staff / Individual Contributor",
+        "ADMIN": "System Administrator"
+    };
+
+    const rolesOrder = ["MD", "GM", "HOD", "MANAGER", "SUPERVISOR", "EMPLOYEE", "ADMIN"];
+
+    tbody.innerHTML = rolesOrder.map(r => {
+        const setting = roleSettings[r] || { section1_weight: 70.0, section2_weight: 30.0 };
+        const sec1 = setting.section1_weight;
+        const sec2 = setting.section2_weight;
+        const total = sec1 + sec2;
+        const isValid = Math.abs(total - 100.0) < 0.1;
+
+        return `
+            <tr class="hover:bg-slate-800/50 transition">
+                <td class="py-2.5 px-3 font-bold text-white">${roleLabels[r] || r}</td>
+                <td class="py-2.5 px-3">
+                    <input type="number" step="1" min="1" max="99" id="role_sec1_${r}" value="${sec1}"
+                        onchange="validateRoleWeightInputs('${r}')"
+                        class="w-20 text-xs p-1.5 bg-slate-950 text-sky-300 font-bold border border-slate-700 rounded focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                </td>
+                <td class="py-2.5 px-3">
+                    <input type="number" step="1" min="1" max="99" id="role_sec2_${r}" value="${sec2}"
+                        onchange="validateRoleWeightInputs('${r}')"
+                        class="w-20 text-xs p-1.5 bg-slate-950 text-indigo-300 font-bold border border-slate-700 rounded focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                </td>
+                <td class="py-2.5 px-3" id="role_status_${r}">
+                    ${isValid ? 
+                        '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-900/80 text-emerald-300 border border-emerald-700">100% ✓</span>' : 
+                        '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-rose-900/80 text-rose-300 border border-rose-700">Error ⚠</span>'}
+                </td>
+                <td class="py-2.5 px-3 text-right">
+                    <button onclick="handleSaveRoleWeightage('${r}')" class="px-3 py-1 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs rounded-lg shadow transition inline-flex items-center gap-1">
+                        <i data-lucide="save" class="w-3.5 h-3.5"></i> Save
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join("");
+    lucide.createIcons();
+}
+
+function validateRoleWeightInputs(role) {
+    const sec1 = parseFloat(document.getElementById(`role_sec1_${role}`).value) || 0;
+    const sec2 = parseFloat(document.getElementById(`role_sec2_${role}`).value) || 0;
+    const statusCell = document.getElementById(`role_status_${role}`);
+    const total = sec1 + sec2;
+    if (Math.abs(total - 100.0) < 0.1) {
+        statusCell.innerHTML = '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-900/80 text-emerald-300 border border-emerald-700">100% ✓</span>';
+    } else {
+        statusCell.innerHTML = `<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-rose-900/80 text-rose-300 border border-rose-700">${total}% ⚠</span>`;
+    }
+}
+
+async function handleSaveRoleWeightage(role) {
+    const sec1 = parseFloat(document.getElementById(`role_sec1_${role}`).value) || 0;
+    const sec2 = parseFloat(document.getElementById(`role_sec2_${role}`).value) || 0;
+    if (Math.abs(sec1 + sec2 - 100.0) >= 0.1) {
+        alert(`Error: Section 1 (${sec1}%) and Section 2 (${sec2}%) for position '${role}' must sum to exactly 100%!`);
+        return;
+    }
+
+    try {
+        const res = await fetch("/api/settings/roles", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ role: role, section1_weight: sec1, section2_weight: sec2 })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            alert(data.message);
+            await fetchRoleSettings();
+            if (currentUserId) await loadUserDashboard(currentUserId);
+        } else {
+            alert("Error: " + data.detail);
         }
     } catch (err) {
-        console.error("Error loading system settings:", err);
+        console.error("Error saving role weightage:", err);
     }
 }
 

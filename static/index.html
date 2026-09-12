@@ -398,32 +398,33 @@
         <!-- TAB 4: ADMIN CONFIGURATION & USER MANAGEMENT -->
         <div id="adminTab" class="hidden space-y-4 sm:space-y-6">
 
-            <!-- ADMINISTRATOR SECTION WEIGHTAGE CONFIGURATION CARD -->
+            <!-- POSITION & ROLE SECTION WEIGHTAGE CONFIGURATION CARD -->
             <div class="bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-md border border-slate-800 space-y-4">
                 <div class="flex items-center justify-between">
                     <div>
                         <h2 class="text-sm sm:text-lg font-bold flex items-center gap-2 text-white">
-                            <i data-lucide="sliders" class="w-5 h-5 text-sky-400"></i> Administrator Section Weightage Configuration
+                            <i data-lucide="sliders" class="w-5 h-5 text-sky-400"></i> Position & Role Section Weightage Management
                         </h2>
-                        <p class="text-xs text-slate-300">Set the overall appraisal weightages for Section 1 (Current EVA) and Section 2 (Future EVA). The sum must equal 100%.</p>
+                        <p class="text-xs text-slate-300">Set custom Section 1 (Current EVA) and Section 2 (Future EVA) percentage weightages for each organizational position (e.g., MD 70/30, GM 50/50, Staff 30/70). Each row must sum to 100%.</p>
                     </div>
                 </div>
 
-                <form id="sectionWeightageForm" onsubmit="handleUpdateSectionWeightages(event)" class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end bg-slate-900/80 p-3.5 rounded-xl border border-slate-700">
-                    <div>
-                        <label class="block text-xs font-semibold text-sky-300 mb-1">Section 1 Weightage % (Current EVA)</label>
-                        <input type="number" step="1" min="1" max="99" id="adminSec1WeightInput" required class="w-full text-xs p-2 bg-slate-950 text-white border border-slate-700 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none" placeholder="70">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-semibold text-indigo-300 mb-1">Section 2 Weightage % (Future EVA)</label>
-                        <input type="number" step="1" min="1" max="99" id="adminSec2WeightInput" required class="w-full text-xs p-2 bg-slate-950 text-white border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="30">
-                    </div>
-                    <div>
-                        <button type="submit" class="w-full px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs rounded-lg shadow transition flex items-center justify-center gap-1.5">
-                            <i data-lucide="save" class="w-4 h-4"></i> Save Section Weightages
-                        </button>
-                    </div>
-                </form>
+                <div class="overflow-x-auto bg-slate-900/90 rounded-xl border border-slate-800 p-2 sm:p-4">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-800 text-[11px] uppercase tracking-wider text-slate-400 font-bold">
+                                <th class="py-2.5 px-3">Position / Role</th>
+                                <th class="py-2.5 px-3 text-sky-400">Section 1 % (Current EVA)</th>
+                                <th class="py-2.5 px-3 text-indigo-400">Section 2 % (Future EVA)</th>
+                                <th class="py-2.5 px-3">Status</th>
+                                <th class="py-2.5 px-3 text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="roleWeightagesTableBody" class="divide-y divide-slate-800/80 text-xs">
+                            <!-- Populated dynamically by app.js -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <!-- ADD USER FORM -->
@@ -554,6 +555,6 @@
     </div>
 
     <!-- SCRIPT INCLUSION WITH CACHE BUSTING -->
-    <script src="/static/app.js?v=5.0.0"></script>
+    <script src="/static/app.js?v=6.0.0"></script>
 </body>
 </html>
