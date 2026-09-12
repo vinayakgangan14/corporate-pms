@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Corporate Performance Management System (PMS)</title>
+    <title>Purechem Manufacturing Appraisal Portal</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Lucide Icons -->
@@ -59,21 +59,18 @@
             <div class="flex flex-col sm:flex-row items-center justify-between py-2.5 sm:py-3 gap-2.5 sm:gap-0">
                 <!-- Brand & Logo -->
                 <div class="flex items-center justify-between w-full sm:w-auto">
-                    <div class="flex items-center space-x-2">
-                        <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center font-bold text-white shadow-md text-xs sm:text-base flex-shrink-0">
-                            PMS
-                        </div>
+                    <div class="flex items-center space-x-2.5">
+                        <img src="/static/purechem_logo.png" alt="Purechem Manufacturing Limited" class="h-9 sm:h-11 w-auto bg-white p-1 rounded-lg object-contain shadow-sm flex-shrink-0">
                         <div class="min-w-0">
-                            <h1 class="text-xs sm:text-base font-bold tracking-tight text-white flex items-center gap-1.5">
-                                Enterprise PMS 
-                                <span class="text-[9px] sm:text-xs bg-sky-500/20 text-sky-300 border border-sky-500/30 px-1.5 py-0.5 rounded-full font-medium">70/30 EVA</span>
+                            <h1 class="text-xs sm:text-base font-bold tracking-tight text-white flex items-center gap-1.5 flex-wrap">
+                                Purechem Manufacturing Appraisal Portal
                             </h1>
-                            <p class="text-[9px] sm:text-xs text-slate-400 truncate">Corporate Hierarchy & Goal Platform</p>
+                            <p class="text-[9px] sm:text-xs text-sky-300 font-medium truncate">Corporate Performance Management & EVA System</p>
                         </div>
                     </div>
 
                     <!-- Mobile Menu Button -->
-                    <button onclick="toggleMobileNav()" class="sm:hidden p-1.5 text-slate-300 hover:text-white focus:outline-none rounded-lg bg-slate-800">
+                    <button onclick="toggleMobileNav()" class="sm:hidden p-1.5 text-slate-300 hover:text-white focus:outline-none rounded-lg bg-slate-800 ml-2">
                         <i data-lucide="menu" class="w-5 h-5"></i>
                     </button>
                 </div>
@@ -92,7 +89,7 @@
             <!-- RESPONSIVE MOBILE NAVIGATION EXPANDABLE MENU -->
             <div id="mobileNavMenu" class="hidden sm:hidden py-2.5 border-t border-slate-800 space-y-1.5">
                 <button onclick="switchTab('appraisalTab')" class="w-full text-left py-2 px-3 rounded-lg text-xs font-semibold text-sky-400 bg-slate-800 flex items-center gap-2">
-                    <i data-lucide="calculator" class="w-4 h-4"></i> 70/30 Appraisal Sheet
+                    <i data-lucide="calculator" class="w-4 h-4"></i> Present year appraisal sheet
                 </button>
                 <button onclick="switchTab('hierarchyTab')" class="w-full text-left py-2 px-3 rounded-lg text-xs font-semibold text-slate-300 hover:bg-slate-800 flex items-center gap-2">
                     <i data-lucide="sitemap" class="w-4 h-4"></i> Org Hierarchy & Goals
@@ -163,7 +160,7 @@
         <!-- DESKTOP NAVIGATION TABS -->
         <div class="hidden sm:flex border-b border-slate-200 space-x-4 lg:space-x-8 overflow-x-auto custom-scrollbar pb-0.5">
             <button onclick="switchTab('appraisalTab')" id="tabBtnAppraisal" class="py-3 text-xs sm:text-sm font-semibold border-b-2 border-sky-600 text-sky-600 flex items-center gap-2 whitespace-nowrap">
-                <i data-lucide="calculator" class="w-4 h-4"></i> 70/30 Appraisal Sheet
+                <i data-lucide="calculator" class="w-4 h-4"></i> Present year appraisal sheet
             </button>
             <button onclick="switchTab('hierarchyTab')" id="tabBtnHierarchy" class="py-3 text-xs sm:text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap">
                 <i data-lucide="sitemap" class="w-4 h-4"></i> Org Hierarchy & Goals
@@ -176,29 +173,29 @@
             </button>
         </div>
 
-        <!-- TAB 1: 70/30 APPRAISAL WORKSPACE -->
+        <!-- TAB 1: PRESENT YEAR APPRAISAL SHEET -->
         <div id="appraisalTab" class="space-y-3 sm:space-y-6">
 
             <!-- WEIGHTAGE FORMULA BANNER -->
             <div class="bg-gradient-to-br from-slate-900 via-sky-900 to-indigo-900 text-white rounded-xl sm:rounded-2xl p-3.5 sm:p-6 shadow-md relative overflow-hidden">
                 <div class="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-3 lg:gap-6">
                     <div class="space-y-1 max-w-2xl">
-                        <span class="inline-block bg-sky-400/20 text-sky-300 text-[9px] sm:text-xs font-semibold px-2 py-0.5 rounded-full border border-sky-400/30">Evaluation Rules</span>
-                        <h2 class="text-xs sm:text-lg font-bold">70% Present EVA + 30% Upcoming Performance</h2>
+                        <span class="inline-block bg-sky-400/20 text-sky-300 text-[9px] sm:text-xs font-semibold px-2 py-0.5 rounded-full border border-sky-400/30">Purechem Weightage Formula</span>
+                        <h2 class="text-xs sm:text-lg font-bold">70% Section 1 (Current EVA) + 30% Section 2 (Future EVA)</h2>
                         <p class="text-[11px] sm:text-xs text-sky-100/80 leading-relaxed">
-                            Appraisal rating: <strong>70% weightage</strong> on Present Year EVA, and <strong>30% weightage</strong> on Upcoming Year goals.
+                            Appraisal rating: <strong>70% weightage</strong> on Key Deliverables impacting Current EVA, and <strong>30% weightage</strong> on Key Deliverables impacting Future EVA.
                         </p>
                     </div>
 
                     <!-- 70/30 SCORE BREAKDOWN DISPLAY -->
                     <div class="bg-slate-900/90 border border-slate-700 rounded-xl p-2.5 sm:p-4 flex items-center justify-between sm:justify-end space-x-2 sm:space-x-6 shadow-inner w-full lg:w-auto">
                         <div class="text-center border-r border-slate-700 pr-2.5 sm:pr-6">
-                            <span class="text-[9px] sm:text-xs font-medium text-sky-400 block">Present (70%)</span>
+                            <span class="text-[9px] sm:text-xs font-medium text-sky-400 block">Section 1 (70%)</span>
                             <div id="summaryPresent70Score" class="text-base sm:text-2xl font-extrabold text-white">0.0%</div>
                             <span id="summaryPresentWeightSum" class="text-[8px] sm:text-[10px] text-slate-400 block">Sum: 100%</span>
                         </div>
                         <div class="text-center border-r border-slate-700 pr-2.5 sm:pr-6">
-                            <span class="text-[9px] sm:text-xs font-medium text-indigo-400 block">Upcoming (30%)</span>
+                            <span class="text-[9px] sm:text-xs font-medium text-indigo-400 block">Section 2 (30%)</span>
                             <div id="summaryUpcoming30Score" class="text-base sm:text-2xl font-extrabold text-white">0.0%</div>
                             <span id="summaryUpcomingWeightSum" class="text-[8px] sm:text-[10px] text-slate-400 block">Sum: 100%</span>
                         </div>
@@ -211,7 +208,7 @@
                 </div>
             </div>
 
-            <!-- SECTION A: PRESENT YEAR EVA & KRAS (70% WEIGHTAGE) -->
+            <!-- SECTION 1: KEY DELIVERABLES IMPACT CURRENT EVA (70% WEIGHTAGE) -->
             <div class="bg-white rounded-xl sm:rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <div class="px-3 sm:px-6 py-3 bg-slate-50 border-b border-slate-200 flex flex-row items-center justify-between gap-2">
                     <div class="flex items-center space-x-2">
@@ -219,12 +216,12 @@
                             70%
                         </div>
                         <div>
-                            <h3 class="text-xs sm:text-base font-bold text-slate-900">SECTION A: Present Year EVA & KRAs</h3>
-                            <p class="text-[10px] text-slate-500 hidden sm:block">Key Result Areas & EVA metrics.</p>
+                            <h3 class="text-xs sm:text-base font-bold text-slate-900">Section 1: Key Deliverables impact Current EVA</h3>
+                            <p class="text-[10px] text-slate-500 hidden sm:block">Key Result Areas & deliverables impacting present year EVA.</p>
                         </div>
                     </div>
                     <button onclick="openAddKRAModal('PRESENT_YEAR_70')" class="px-2.5 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-[11px] sm:text-xs font-semibold rounded-lg flex items-center justify-center gap-1 transition">
-                        <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i> <span class="hidden sm:inline">Add Present KRA</span><span class="sm:hidden">Add KRA</span>
+                        <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i> <span class="hidden sm:inline">Add Section 1 KRA</span><span class="sm:hidden">Add KRA</span>
                     </button>
                 </div>
 
@@ -256,7 +253,7 @@
                 </div>
             </div>
 
-            <!-- SECTION B: UPCOMING YEAR PERFORMANCE & OBJECTIVES (30% WEIGHTAGE) -->
+            <!-- SECTION 2: KEY DELIVERABLES IMPACT FUTURE EVA (30% WEIGHTAGE) -->
             <div class="bg-white rounded-xl sm:rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <div class="px-3 sm:px-6 py-3 bg-slate-50 border-b border-slate-200 flex flex-row items-center justify-between gap-2">
                     <div class="flex items-center space-x-2">
@@ -264,12 +261,12 @@
                             30%
                         </div>
                         <div>
-                            <h3 class="text-xs sm:text-base font-bold text-slate-900">SECTION B: Upcoming Year Objectives</h3>
-                            <p class="text-[10px] text-slate-500 hidden sm:block">Target commitments & strategic goals.</p>
+                            <h3 class="text-xs sm:text-base font-bold text-slate-900">Section 2: Key Deliverables impact Future EVA</h3>
+                            <p class="text-[10px] text-slate-500 hidden sm:block">Future strategic targets & readiness initiatives.</p>
                         </div>
                     </div>
                     <button onclick="openAddKRAModal('UPCOMING_YEAR_30')" class="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] sm:text-xs font-semibold rounded-lg flex items-center justify-center gap-1 transition">
-                        <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i> <span class="hidden sm:inline">Add Objective</span><span class="sm:hidden">Add Goal</span>
+                        <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i> <span class="hidden sm:inline">Add Section 2 KRA</span><span class="sm:hidden">Add Goal</span>
                     </button>
                 </div>
 
@@ -313,7 +310,7 @@
                     </div>
                     <div>
                         <label class="block text-[11px] sm:text-xs font-semibold text-slate-700 mb-1">Evaluator / Manager Assessment</label>
-                        <textarea id="managerCommentsInput" rows="2" class="w-full text-xs p-2 sm:p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none" placeholder="Manager feedback on 70/30 appraisal performance..."></textarea>
+                        <textarea id="managerCommentsInput" rows="2" class="w-full text-xs p-2 sm:p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none" placeholder="Manager feedback on Section 1 & Section 2 performance..."></textarea>
                     </div>
                 </div>
 
@@ -339,7 +336,7 @@
                         <h2 class="text-xs sm:text-lg font-bold text-slate-900 flex items-center gap-1.5">
                             <i data-lucide="git-branch" class="w-4 h-4 sm:w-5 sm:h-5 text-sky-600 flex-shrink-0"></i> Hierarchy & Goals Tree
                         </h2>
-                        <p class="text-[10px] text-slate-500">MD $\rightarrow$ GM $\rightarrow$ HOD $\rightarrow$ Manager $\rightarrow$ Supervisor $\rightarrow$ Staff reporting tree.</p>
+                        <p class="text-[10px] text-slate-500">Purechem reporting structure from MD down to Staff.</p>
                     </div>
                 </div>
 
@@ -454,7 +451,7 @@
     <div id="addKraModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center z-50 p-3">
         <div class="bg-white rounded-2xl max-w-lg w-full p-4 sm:p-6 shadow-2xl space-y-3 max-h-[90vh] overflow-y-auto custom-scrollbar">
             <div class="flex justify-between items-center border-b border-slate-100 pb-2.5">
-                <h3 id="modalTitle" class="text-xs sm:text-base font-bold text-slate-900">Add Key Result Area (KRA)</h3>
+                <h3 id="modalTitle" class="text-xs sm:text-base font-bold text-slate-900">Add Key Deliverables KRA</h3>
                 <button onclick="closeAddKRAModal()" class="text-slate-400 hover:text-slate-600 p-1">
                     <i data-lucide="x" class="w-4 h-4"></i>
                 </button>
@@ -510,6 +507,6 @@
     </div>
 
     <!-- SCRIPT INCLUSION WITH CACHE BUSTING -->
-    <script src="/static/app.js?v=3.0.0"></script>
+    <script src="/static/app.js?v=4.0.0"></script>
 </body>
 </html>

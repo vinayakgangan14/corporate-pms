@@ -448,7 +448,7 @@ async function fetchAnalytics() {
 function openAddKRAModal(section) {
     document.getElementById("kraSectionInput").value = section;
     document.getElementById("modalTitle").innerText = section === "PRESENT_YEAR_70" ? 
-        "Add Present Year EVA KRA (70%)" : "Add Upcoming Objective (30%)";
+        "Add KRA to Section 1: Key Deliverables impact Current EVA (70%)" : "Add KRA to Section 2: Key Deliverables impact Future EVA (30%)";
     document.getElementById("addKraModal").classList.remove("hidden");
     document.getElementById("addKraModal").classList.add("flex");
 }
