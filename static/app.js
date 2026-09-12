@@ -127,6 +127,8 @@ async function fetchUsers() {
         allUsers = await res.json();
         populateUserSelector();
         populateManagerDropdown();
+        populateAdminPersonaDropdown();
+        renderAllUsersPersonaTable();
 
         if (!currentUserId && allUsers.length > 0) {
             const mdUser = allUsers.find(u => u.role === "MD") || allUsers[0];
@@ -139,6 +141,145 @@ async function fetchUsers() {
         }
     } catch (err) {
         console.error("Error loading users:", err);
+    }
+}
+
+function populateAdminPersonaDropdown() {
+    const select = document.getElementById("adminPersonaSelect");
+    if (!select) return;
+    select.innerHTML = allUsers.map(u => 
+        `<option value="${u.id}">${u.name} [${u.role}] - ${u.designation}</option>`
+    ).join("");
+
+    if (allUsers.length > 0) {
+        handleAdminPersonaSelectChange(select.value || allUsers[0].id);
+    }
+}
+
+function handleAdminPersonaSelectChange(userId) {
+    const u = allUsers.find(usr => usr.id === parseInt(userId));
+    if (!u) return;
+    const sec1Input = document.getElementById("personaSec1WeightInput");
+    const sec2Input = document.getElementById("personaSec2WeightInput");
+    if (sec1Input && sec2Input) {
+        sec1Input.value = u.effective_section1_weight;
+        sec2Input.value = u.effective_section2_weight;
+    }
+}
+
+async function handleSavePersonaFormWeightages(e) {
+    e.preventDefault();
+    const select = document.getElementById("adminPersonaSelect");
+    const userId = parseInt(select.value);
+    const sec1 = parseFloat(document.getElementById("personaSec1WeightInput").value) || 0;
+    const sec2 = parseFloat(document.getElementById("personaSec2WeightInput").value) || 0;
+
+    if (Math.abs(sec1 + sec2 - 100.0) >= 0.1) {
+        alert(`Error: Section 1 (${sec1}%) and Section 2 (${sec2}%) for the selected persona must sum to exactly 100%!`);
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/users/${userId}/weightages`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ section1_weight: sec1, section2_weight: sec2 })
+        });
+        const result = await res.json();
+        if (res.ok) {
+            alert(result.message);
+            await fetchUsers();
+        } else {
+            alert("Error: " + result.detail);
+        }
+    } catch (err) {
+        console.error("Error saving persona weightages:", err);
+    }
+}
+
+function renderAllUsersPersonaTable() {
+    const tbody = document.getElementById("allPersonasWeightageTableBody");
+    const badge = document.getElementById("personaWeightCountBadge");
+    if (!tbody) return;
+
+    if (badge) badge.innerText = `${allUsers.length} Registered Personas`;
+
+    tbody.innerHTML = allUsers.map(u => {
+        const sec1 = u.effective_section1_weight;
+        const sec2 = u.effective_section2_weight;
+        const total = sec1 + sec2;
+        const isValid = Math.abs(total - 100.0) < 0.1;
+
+        return `
+            <tr class="hover:bg-slate-800/50 transition">
+                <td class="py-2.5 px-3">
+                    <div class="font-bold text-white flex items-center gap-1.5">
+                        ${u.name}
+                        <span class="px-1.5 py-0.5 text-[9px] font-bold rounded bg-sky-950 text-sky-300 border border-sky-800">${u.role}</span>
+                    </div>
+                    <div class="text-[11px] text-slate-400">${u.designation} (${u.department_name || 'Executive'})</div>
+                </td>
+                <td class="py-2.5 px-3">
+                    <input type="number" step="1" min="1" max="99" id="table_sec1_${u.id}" value="${sec1}"
+                        onchange="validateTableRowPersonaWeight('${u.id}')"
+                        class="w-20 text-xs p-1.5 bg-slate-950 text-sky-300 font-bold border border-slate-700 rounded focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                </td>
+                <td class="py-2.5 px-3">
+                    <input type="number" step="1" min="1" max="99" id="table_sec2_${u.id}" value="${sec2}"
+                        onchange="validateTableRowPersonaWeight('${u.id}')"
+                        class="w-20 text-xs p-1.5 bg-slate-950 text-indigo-300 font-bold border border-slate-700 rounded focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                </td>
+                <td class="py-2.5 px-3" id="table_status_${u.id}">
+                    ${isValid ? 
+                        '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-900/80 text-emerald-300 border border-emerald-700">100% ✓</span>' : 
+                        '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-rose-900/80 text-rose-300 border border-rose-700">Error ⚠</span>'}
+                </td>
+                <td class="py-2.5 px-3 text-right">
+                    <button onclick="handleSaveTableRowPersonaWeight(${u.id})" class="px-3 py-1 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs rounded-lg shadow transition inline-flex items-center gap-1">
+                        <i data-lucide="save" class="w-3.5 h-3.5"></i> Save
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join("");
+    lucide.createIcons();
+}
+
+function validateTableRowPersonaWeight(userId) {
+    const sec1 = parseFloat(document.getElementById(`table_sec1_${userId}`).value) || 0;
+    const sec2 = parseFloat(document.getElementById(`table_sec2_${userId}`).value) || 0;
+    const statusCell = document.getElementById(`table_status_${userId}`);
+    const total = sec1 + sec2;
+    if (Math.abs(total - 100.0) < 0.1) {
+        statusCell.innerHTML = '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-900/80 text-emerald-300 border border-emerald-700">100% ✓</span>';
+    } else {
+        statusCell.innerHTML = `<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-rose-900/80 text-rose-300 border border-rose-700">${total}% ⚠</span>`;
+    }
+}
+
+async function handleSaveTableRowPersonaWeight(userId) {
+    const sec1 = parseFloat(document.getElementById(`table_sec1_${userId}`).value) || 0;
+    const sec2 = parseFloat(document.getElementById(`table_sec2_${userId}`).value) || 0;
+    if (Math.abs(sec1 + sec2 - 100.0) >= 0.1) {
+        alert(`Error: Section 1 (${sec1}%) and Section 2 (${sec2}%) for persona #${userId} must sum to exactly 100%!`);
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/users/${userId}/weightages`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ section1_weight: sec1, section2_weight: sec2 })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            alert(data.message);
+            await fetchUsers();
+        } else {
+            alert("Error: " + data.detail);
+        }
+    } catch (err) {
+        console.error("Error saving user weightage:", err);
     }
 }
 
