@@ -594,7 +594,7 @@ function renderKraTables() {
         }
     }
 
-    renderKraSectionRows("presentKraMobileCards", "presentKraDesktopRows", sec1Pms.kras, isFreezed || !isViewingSelf, isViewingSelf);
+    renderKraSectionRows("presentKraMobileCards", "presentKraTableBody", sec1Pms.kras, isFreezed || !isViewingSelf, isViewingSelf);
 
     const sec2Pms = pms.upcoming_year;
     document.getElementById("summaryUpcoming30Score").innerText = sec2Pms.raw_score.toFixed(1) + "%";
@@ -614,10 +614,36 @@ function renderKraTables() {
         }
     }
 
-    renderKraSectionRows("upcomingKraMobileCards", "upcomingKraDesktopRows", sec2Pms.kras, isFreezed || !isViewingSelf, isViewingSelf);
+    renderKraSectionRows("upcomingKraMobileCards", "upcomingKraTableBody", sec2Pms.kras, isFreezed || !isViewingSelf, isViewingSelf);
 
     document.getElementById("summaryCompositeScore").innerText = pms.composite_score.toFixed(1) + "%";
     document.getElementById("summaryGrade").innerText = "Grade " + pms.grade;
+
+    // Freeze & Control Comment Textareas based on status & role
+    const selfInput = document.getElementById("selfCommentsInput");
+    const mgrInput = document.getElementById("managerCommentsInput");
+    const mdInput = document.getElementById("mdCommentsInput");
+
+    if (selfInput) {
+        const canEditSelf = isViewingSelf && !isFreezed;
+        selfInput.disabled = !canEditSelf;
+        selfInput.className = `w-full text-xs p-2 sm:p-3 border rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none ${canEditSelf ? 'bg-white border-slate-300' : 'bg-slate-100 border-slate-200 text-slate-600 cursor-not-allowed'}`;
+    }
+
+    if (mgrInput) {
+        const canEditMgr = !isViewingSelf && (appStatus === "SUBMITTED_SELF");
+        mgrInput.disabled = !canEditMgr;
+        mgrInput.className = `w-full text-xs p-2 sm:p-3 border rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none ${canEditMgr ? 'bg-white border-slate-300' : 'bg-slate-100 border-slate-200 text-slate-600 cursor-not-allowed'}`;
+    }
+
+    if (mdInput) {
+        const isMdRole = loggedInUser && (loggedInUser.role === 'MD' || loggedInUser.role === 'ADMIN');
+        const canEditMd = !isViewingSelf && isMdRole && (appStatus === "MANAGER_APPROVED");
+        mdInput.disabled = !canEditMd;
+        mdInput.className = `w-full text-xs p-2 sm:p-3 border rounded-xl focus:ring-2 focus:ring-purple-500 focus:outline-none ${canEditMd ? 'bg-purple-50/50 border-purple-300' : 'bg-slate-100 border-slate-200 text-slate-600 cursor-not-allowed'}`;
+    }
+
+    if (window.lucide) lucide.createIcons();
 }
 
 function renderKraSectionRows(mobileId, desktopId, kras, isFreezed, isViewingSelf) {
@@ -628,7 +654,7 @@ function renderKraSectionRows(mobileId, desktopId, kras, isFreezed, isViewingSel
 
     if (kras.length === 0) {
         mobileContainer.innerHTML = `<div class="text-center py-4 text-xs text-slate-400 italic">No KRAs added yet to this section.</div>`;
-        desktopContainer.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-xs text-slate-400 italic">No KRAs added yet to this section.</td></tr>`;
+        desktopContainer.innerHTML = `<tr><td colspan="9" class="text-center py-4 text-xs text-slate-400 italic">No KRAs added yet to this section.</td></tr>`;
         return;
     }
 
@@ -682,28 +708,29 @@ function renderKraSectionRows(mobileId, desktopId, kras, isFreezed, isViewingSel
                 <div class="text-[11px] text-slate-500">${kra.description || ''}</div>
             </td>
             <td class="p-3 font-medium text-slate-600">${kra.metric_unit}</td>
-            <td class="p-3 font-semibold text-slate-800">${kra.target_value}</td>
-            <td class="p-3 font-bold text-slate-900">
+            <td class="p-3 font-semibold text-slate-800 text-right">${kra.target_value}</td>
+            <td class="p-3 font-bold text-slate-900 text-right">
                 ${!isFreezed && isViewingSelf ? `
                     <input type="number" step="0.1" value="${kra.actual_outcome}" 
                         onchange="updateKraOutcome(${kra.id}, this.value, ${kra.self_rating_percent}, ${kra.manager_rating_percent})"
-                        class="w-20 text-xs p-1.5 bg-slate-50 font-bold border border-slate-300 rounded focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                        class="w-20 text-xs p-1.5 bg-slate-50 font-bold border border-slate-300 rounded focus:ring-2 focus:ring-sky-500 focus:outline-none text-right">
                 ` : `<span class="font-bold text-slate-900">${kra.actual_outcome}</span>`}
             </td>
-            <td class="p-3 font-extrabold text-sky-700">${kra.weightage_percent}%</td>
-            <td class="p-3 font-bold ${kra.achievement_percent >= 100 ? 'text-emerald-600' : 'text-slate-800'}">${kra.achievement_percent}%</td>
-            <td class="p-3 text-right">
-                <div class="flex items-center justify-end space-x-2">
-                    <span class="font-black text-xs text-sky-900 bg-sky-50 border border-sky-200 px-2 py-0.5 rounded-md">${kra.weighted_contribution}%</span>
-                    ${!isFreezed && isViewingSelf ? `
-                        <button onclick="deleteKra(${kra.id})" class="p-1 text-slate-400 hover:text-rose-600 transition" title="Delete KRA">
-                            <i data-lucide="trash-2" class="w-4 h-4"></i>
-                        </button>
-                    ` : ''}
-                </div>
+            <td class="p-3 font-bold text-right ${kra.achievement_percent >= 100 ? 'text-emerald-600' : 'text-slate-800'}">${kra.achievement_percent}%</td>
+            <td class="p-3 font-extrabold text-sky-700 text-right">${kra.weightage_percent}%</td>
+            <td class="p-3 font-semibold text-slate-700 text-right">${kra.self_rating_percent}%</td>
+            <td class="p-3 text-right font-black text-xs text-sky-900">${kra.weighted_contribution}%</td>
+            <td class="p-3 text-center">
+                ${!isFreezed && isViewingSelf ? `
+                    <button onclick="deleteKra(${kra.id})" class="p-1 text-slate-400 hover:text-rose-600 transition" title="Delete KRA">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                    </button>
+                ` : ''}
             </td>
         </tr>
     `).join("");
+
+    if (window.lucide) lucide.createIcons();
 }
 
 async function handleUpdateSectionWeightages(e) {
