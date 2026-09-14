@@ -89,6 +89,7 @@ class SubmitAppraisalSchema(BaseModel):
     status: str
     self_comments: Optional[str] = ""
     manager_comments: Optional[str] = ""
+    md_comments: Optional[str] = ""
 
 class UpdateSettingsSchema(BaseModel):
     section1_weightage: float
@@ -316,9 +317,9 @@ def get_user_pms_dashboard(user_id: int, year: int = 2026):
         cursor.execute("SELECT u.id, u.name, u.email, u.role, u.designation FROM users u WHERE u.manager_id = %s", (user_id,))
         direct_reports = [dict(row) for row in cursor.fetchall()]
         
-        cursor.execute("SELECT status, self_comments, manager_comments FROM appraisals WHERE user_id = %s AND year = %s", (user_id, year))
+        cursor.execute("SELECT status, self_comments, manager_comments, md_comments FROM appraisals WHERE user_id = %s AND year = %s", (user_id, year))
         appraisal_row = cursor.fetchone()
-        appraisal_meta = dict(appraisal_row) if appraisal_row else {"status": "DRAFT", "self_comments": "", "manager_comments": ""}
+        appraisal_meta = dict(appraisal_row) if appraisal_row else {"status": "DRAFT", "self_comments": "", "manager_comments": "", "md_comments": ""}
     else:
         cursor.execute("""
             SELECT u.id, u.name, u.email, u.role, u.designation, u.manager_id, 
@@ -340,9 +341,9 @@ def get_user_pms_dashboard(user_id: int, year: int = 2026):
         cursor.execute("SELECT u.id, u.name, u.email, u.role, u.designation FROM users u WHERE u.manager_id = ?", (user_id,))
         direct_reports = [dict(row) for row in cursor.fetchall()]
         
-        cursor.execute("SELECT status, self_comments, manager_comments FROM appraisals WHERE user_id = ? AND year = ?", (user_id, year))
+        cursor.execute("SELECT status, self_comments, manager_comments, md_comments FROM appraisals WHERE user_id = ? AND year = ?", (user_id, year))
         appraisal_row = cursor.fetchone()
-        appraisal_meta = dict(appraisal_row) if appraisal_row else {"status": "DRAFT", "self_comments": "", "manager_comments": ""}
+        appraisal_meta = dict(appraisal_row) if appraisal_row else {"status": "DRAFT", "self_comments": "", "manager_comments": "", "md_comments": ""}
 
     downchain_ids = get_downchain_report_ids(user_id)
     conn.close()
@@ -437,7 +438,7 @@ def submit_appraisal(payload: SubmitAppraisalSchema):
     score_data = compute_user_pms_score(payload.user_id, payload.year)
     
     # Enforce 100% weightage sum check on formal submission / approval
-    if payload.status in ["SUBMITTED_SELF", "APPROVED"]:
+    if payload.status in ["SUBMITTED_SELF", "MANAGER_APPROVED", "APPROVED"]:
         if not score_data["is_overall_weightage_valid"]:
             error_details = " | ".join(score_data["errors"])
             raise HTTPException(
@@ -450,8 +451,8 @@ def submit_appraisal(payload: SubmitAppraisalSchema):
     
     if is_postgres():
         cursor.execute("""
-            INSERT INTO appraisals (user_id, year, status, present_year_score, upcoming_year_score, composite_score, performance_band, grade, self_comments, manager_comments)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO appraisals (user_id, year, status, present_year_score, upcoming_year_score, composite_score, performance_band, grade, self_comments, manager_comments, md_comments)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(user_id, year) DO UPDATE SET
                 status = EXCLUDED.status,
                 present_year_score = EXCLUDED.present_year_score,
@@ -461,6 +462,7 @@ def submit_appraisal(payload: SubmitAppraisalSchema):
                 grade = EXCLUDED.grade,
                 self_comments = COALESCE(NULLIF(EXCLUDED.self_comments, ''), appraisals.self_comments),
                 manager_comments = COALESCE(NULLIF(EXCLUDED.manager_comments, ''), appraisals.manager_comments),
+                md_comments = COALESCE(NULLIF(EXCLUDED.md_comments, ''), appraisals.md_comments),
                 updated_at = CURRENT_TIMESTAMP
         """, (
             payload.user_id, 
@@ -472,12 +474,13 @@ def submit_appraisal(payload: SubmitAppraisalSchema):
             score_data["performance_band"], 
             score_data["grade"], 
             payload.self_comments, 
-            payload.manager_comments
+            payload.manager_comments,
+            payload.md_comments
         ))
     else:
         cursor.execute("""
-            INSERT INTO appraisals (user_id, year, status, present_year_score, upcoming_year_score, composite_score, performance_band, grade, self_comments, manager_comments)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO appraisals (user_id, year, status, present_year_score, upcoming_year_score, composite_score, performance_band, grade, self_comments, manager_comments, md_comments)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(user_id, year) DO UPDATE SET
                 status = excluded.status,
                 present_year_score = excluded.present_year_score,
@@ -487,6 +490,7 @@ def submit_appraisal(payload: SubmitAppraisalSchema):
                 grade = excluded.grade,
                 self_comments = COALESCE(NULLIF(excluded.self_comments, ''), self_comments),
                 manager_comments = COALESCE(NULLIF(excluded.manager_comments, ''), manager_comments),
+                md_comments = COALESCE(NULLIF(excluded.md_comments, ''), md_comments),
                 updated_at = CURRENT_TIMESTAMP
         """, (
             payload.user_id, 
@@ -498,7 +502,8 @@ def submit_appraisal(payload: SubmitAppraisalSchema):
             score_data["performance_band"], 
             score_data["grade"], 
             payload.self_comments, 
-            payload.manager_comments
+            payload.manager_comments,
+            payload.md_comments
         ))
         
     conn.commit()

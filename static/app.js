@@ -383,7 +383,8 @@ function renderHeaderStats() {
     const statusBadgeMap = {
         DRAFT: '<span class="px-2 py-0.5 text-xs font-bold rounded bg-amber-100 text-amber-800 border border-amber-300">DRAFT</span>',
         SUBMITTED_SELF: '<span class="px-2 py-0.5 text-xs font-bold rounded bg-sky-100 text-sky-800 border border-sky-300">SUBMITTED TO MANAGER 🔒</span>',
-        APPROVED: '<span class="px-2 py-0.5 text-xs font-bold rounded bg-emerald-100 text-emerald-800 border border-emerald-300">APPROVED BY MANAGER ✓</span>',
+        MANAGER_APPROVED: '<span class="px-2 py-0.5 text-xs font-bold rounded bg-indigo-100 text-indigo-800 border border-indigo-300">MANAGER APPROVED — PENDING MD APPROVAL ⏳</span>',
+        APPROVED: '<span class="px-2 py-0.5 text-xs font-bold rounded bg-emerald-100 text-emerald-800 border border-emerald-300">FULLY APPROVED BY MD ✓</span>',
         REJECTED: '<span class="px-2 py-0.5 text-xs font-bold rounded bg-rose-100 text-rose-800 border border-rose-300">DISAPPROVED / RETURNED ⚠️</span>'
     };
     document.getElementById("statAppraisalStatus").innerHTML = statusBadgeMap[appMeta.status] || `<span class="px-2 py-0.5 text-xs font-bold rounded bg-slate-100 text-slate-800 border border-slate-300">${appMeta.status}</span>`;
@@ -392,6 +393,8 @@ function renderHeaderStats() {
 
     document.getElementById("selfCommentsInput").value = appMeta.self_comments || "";
     document.getElementById("managerCommentsInput").value = appMeta.manager_comments || "";
+    const mdInput = document.getElementById("mdCommentsInput");
+    if (mdInput) mdInput.value = appMeta.md_comments || "";
 }
 
 function renderKraTables() {
@@ -401,23 +404,49 @@ function renderKraTables() {
     const sec2Weight = pms.section_settings ? pms.section_settings.section2_weightage_percent : 30.0;
 
     const appStatus = currentPmsData.appraisal_status ? currentPmsData.appraisal_status.status : "DRAFT";
-    const isFreezed = appStatus === "SUBMITTED_SELF" || appStatus === "APPROVED" || appStatus === "MANAGER_REVIEWED";
+    const isFreezed = appStatus === "SUBMITTED_SELF" || appStatus === "MANAGER_APPROVED" || appStatus === "APPROVED" || appStatus === "MANAGER_REVIEWED";
     const isRejected = appStatus === "REJECTED";
 
     // Freeze / Unfreeze Notice Banners
     const freezeAlertContainer = document.getElementById("appraisalFreezeAlertContainer");
     if (freezeAlertContainer) {
-        if (isFreezed) {
+        if (appStatus === "SUBMITTED_SELF") {
             freezeAlertContainer.innerHTML = `
                 <div class="bg-sky-50 border border-sky-200 text-sky-900 rounded-xl p-3 sm:p-4 mb-3 sm:mb-4 flex items-center justify-between gap-3 shadow-xs">
                     <div class="flex items-center gap-2">
                         <i data-lucide="lock" class="w-5 h-5 text-sky-600 flex-shrink-0"></i>
                         <div>
-                            <div class="font-bold text-xs sm:text-sm">🔒 Appraisal Submitted & Freezed for Edits</div>
-                            <p class="text-[11px] text-sky-700">Section 1 & Section 2 KRAs have been submitted to your reporting manager and are locked for changes unless disapproved/returned by your manager.</p>
+                            <div class="font-bold text-xs sm:text-sm">🔒 Submitted to Reporting Manager (Suraj Pant)</div>
+                            <p class="text-[11px] text-sky-700">Section 1 & Section 2 KRAs have been submitted and are locked for changes pending Reporting Manager review.</p>
                         </div>
                     </div>
                     <span class="px-2.5 py-1 text-xs font-bold rounded-lg bg-sky-600 text-white shadow-xs whitespace-nowrap">Locked 🔒</span>
+                </div>
+            `;
+        } else if (appStatus === "MANAGER_APPROVED") {
+            freezeAlertContainer.innerHTML = `
+                <div class="bg-indigo-50 border border-indigo-200 text-indigo-900 rounded-xl p-3 sm:p-4 mb-3 sm:mb-4 flex items-center justify-between gap-3 shadow-xs">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="shield-check" class="w-5 h-5 text-indigo-600 flex-shrink-0"></i>
+                        <div>
+                            <div class="font-bold text-xs sm:text-sm">⏳ Approved by Manager — Submitted to Managing Director (Rajesh Sarada)</div>
+                            <p class="text-[11px] text-indigo-700">Reporting Manager has approved. Section 1 & Section 2 KRAs are locked pending final sign-off by Managing Director.</p>
+                        </div>
+                    </div>
+                    <span class="px-2.5 py-1 text-xs font-bold rounded-lg bg-indigo-600 text-white shadow-xs whitespace-nowrap">Pending MD ⏳</span>
+                </div>
+            `;
+        } else if (appStatus === "APPROVED") {
+            freezeAlertContainer.innerHTML = `
+                <div class="bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl p-3 sm:p-4 mb-3 sm:mb-4 flex items-center justify-between gap-3 shadow-xs">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="check-circle-2" class="w-5 h-5 text-emerald-600 flex-shrink-0"></i>
+                        <div>
+                            <div class="font-bold text-xs sm:text-sm">✓ Fully Approved & Signed Off by Managing Director</div>
+                            <p class="text-[11px] text-emerald-700">This appraisal has completed all approval tiers and is finalized.</p>
+                        </div>
+                    </div>
+                    <span class="px-2.5 py-1 text-xs font-bold rounded-lg bg-emerald-600 text-white shadow-xs whitespace-nowrap">Approved ✓</span>
                 </div>
             `;
         } else if (isRejected) {
@@ -427,7 +456,7 @@ function renderKraTables() {
                         <i data-lucide="alert-triangle" class="w-5 h-5 text-rose-600 flex-shrink-0"></i>
                         <div>
                             <div class="font-bold text-xs sm:text-sm">⚠️ Appraisal Disapproved / Returned for Edits</div>
-                            <p class="text-[11px] text-rose-700">Your reporting manager has disapproved the appraisal. Section 1 & Section 2 KRAs have been unfrozen. Please update your target outcomes/ratings and click "Submit Self Appraisal" again.</p>
+                            <p class="text-[11px] text-rose-700">The appraisal was returned for modifications. Section 1 & Section 2 KRAs have been unfrozen. Please revise outcomes/ratings and click "Submit Self Appraisal" again.</p>
                         </div>
                     </div>
                     <span class="px-2.5 py-1 text-xs font-bold rounded-lg bg-rose-600 text-white shadow-xs whitespace-nowrap">Unfrozen ⚠️</span>
@@ -447,25 +476,7 @@ function renderKraTables() {
     // Dynamic Action Buttons
     const actionBox = document.getElementById("appraisalActionButtonsBox");
     if (actionBox) {
-        if (isFreezed) {
-            actionBox.innerHTML = `
-                <button onclick="submitAppraisalForm('APPROVED')" class="w-full sm:w-auto px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5">
-                    <i data-lucide="check-circle" class="w-4 h-4"></i> Approve Appraisal (Reporting Manager)
-                </button>
-                <button onclick="submitAppraisalForm('REJECTED')" class="w-full sm:w-auto px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5">
-                    <i data-lucide="x-circle" class="w-4 h-4"></i> Disapprove / Reject Appraisal (Return for Edits)
-                </button>
-            `;
-        } else if (isRejected) {
-            actionBox.innerHTML = `
-                <button onclick="submitAppraisalForm('DRAFT')" class="w-full sm:w-auto px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold text-xs rounded-xl transition text-center">
-                    Save Draft
-                </button>
-                <button onclick="submitAppraisalForm('SUBMITTED_SELF')" class="w-full sm:w-auto px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5">
-                    <i data-lucide="send" class="w-4 h-4"></i> Re-Submit Self Appraisal
-                </button>
-            `;
-        } else {
+        if (appStatus === "DRAFT" || appStatus === "REJECTED") {
             actionBox.innerHTML = `
                 <button onclick="submitAppraisalForm('DRAFT')" class="w-full sm:w-auto px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold text-xs rounded-xl transition text-center">
                     Save Draft
@@ -473,6 +484,30 @@ function renderKraTables() {
                 <button onclick="submitAppraisalForm('SUBMITTED_SELF')" class="w-full sm:w-auto px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5">
                     <i data-lucide="send" class="w-4 h-4"></i> Submit Self Appraisal
                 </button>
+            `;
+        } else if (appStatus === "SUBMITTED_SELF") {
+            actionBox.innerHTML = `
+                <button onclick="submitAppraisalForm('MANAGER_APPROVED')" class="w-full sm:w-auto px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5">
+                    <i data-lucide="check-circle" class="w-4 h-4"></i> Level 1 Approve (Reporting Manager Suraj Pant)
+                </button>
+                <button onclick="submitAppraisalForm('REJECTED')" class="w-full sm:w-auto px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5">
+                    <i data-lucide="x-circle" class="w-4 h-4"></i> Disapprove / Reject (Return for Edits)
+                </button>
+            `;
+        } else if (appStatus === "MANAGER_APPROVED") {
+            actionBox.innerHTML = `
+                <button onclick="submitAppraisalForm('APPROVED')" class="w-full sm:w-auto px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5">
+                    <i data-lucide="crown" class="w-4 h-4"></i> MD Final Approve (Managing Director Rajesh Sarada)
+                </button>
+                <button onclick="submitAppraisalForm('REJECTED')" class="w-full sm:w-auto px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5">
+                    <i data-lucide="x-circle" class="w-4 h-4"></i> MD Disapprove / Reject (Return for Edits)
+                </button>
+            `;
+        } else if (appStatus === "APPROVED") {
+            actionBox.innerHTML = `
+                <div class="px-4 py-2 bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-xs rounded-xl flex items-center gap-1.5">
+                    <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600"></i> Appraisal Fully Approved & Signed Off by Managing Director
+                </div>
             `;
         }
     }
@@ -994,6 +1029,9 @@ async function submitAppraisalForm(status) {
     }
 
     try {
+        const mdInput = document.getElementById("mdCommentsInput");
+        const mdComments = mdInput ? mdInput.value : "";
+
         const res = await fetch("/api/appraisals/submit", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1002,7 +1040,8 @@ async function submitAppraisalForm(status) {
                 year: 2026,
                 status: status,
                 self_comments: document.getElementById("selfCommentsInput").value,
-                manager_comments: document.getElementById("managerCommentsInput").value
+                manager_comments: document.getElementById("managerCommentsInput").value,
+                md_comments: mdComments
             })
         });
         const result = await res.json();
