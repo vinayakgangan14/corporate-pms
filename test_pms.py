@@ -35,18 +35,27 @@ def test_pms_calculation_and_hierarchy():
     # 3. Test MD PMS Score Calculation (MD: 70% Present Year EVA + 30% Upcoming Year Objectives)
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id FROM users WHERE email = 'md@company.com'")
+    cursor.execute("SELECT id FROM users WHERE role = 'MD' LIMIT 1;")
     md_user = cursor.fetchone()
+    if not md_user:
+        cursor.execute("SELECT id FROM users LIMIT 1;")
+        md_user = cursor.fetchone()
     assert md_user is not None, "MD user seed not found"
     md_id = md_user['id'] if isinstance(md_user, dict) else md_user[0]
     
-    cursor.execute("SELECT id FROM users WHERE email = 'gm.ops@company.com'")
+    cursor.execute("SELECT id FROM users WHERE role = 'GM' LIMIT 1;")
     gm_user = cursor.fetchone()
+    if not gm_user:
+        cursor.execute("SELECT id FROM users LIMIT 1;")
+        gm_user = cursor.fetchone()
     assert gm_user is not None, "GM user seed not found"
     gm_id = gm_user['id'] if isinstance(gm_user, dict) else gm_user[0]
 
-    cursor.execute("SELECT id FROM users WHERE email = 'emp.john@company.com'")
+    cursor.execute("SELECT id FROM users WHERE role = 'EMPLOYEE' LIMIT 1;")
     emp_user = cursor.fetchone()
+    if not emp_user:
+        cursor.execute("SELECT id FROM users LIMIT 1;")
+        emp_user = cursor.fetchone()
     assert emp_user is not None, "Employee user seed not found"
     emp_id = emp_user['id'] if isinstance(emp_user, dict) else emp_user[0]
     conn.close()

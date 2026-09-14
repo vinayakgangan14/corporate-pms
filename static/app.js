@@ -379,7 +379,15 @@ function renderHeaderStats() {
     }`;
 
     document.getElementById("statBandName").innerText = pms.performance_band;
-    document.getElementById("statAppraisalStatus").innerText = appMeta.status;
+
+    const statusBadgeMap = {
+        DRAFT: '<span class="px-2 py-0.5 text-xs font-bold rounded bg-amber-100 text-amber-800 border border-amber-300">DRAFT</span>',
+        SUBMITTED_SELF: '<span class="px-2 py-0.5 text-xs font-bold rounded bg-sky-100 text-sky-800 border border-sky-300">SUBMITTED TO MANAGER 🔒</span>',
+        APPROVED: '<span class="px-2 py-0.5 text-xs font-bold rounded bg-emerald-100 text-emerald-800 border border-emerald-300">APPROVED BY MANAGER ✓</span>',
+        REJECTED: '<span class="px-2 py-0.5 text-xs font-bold rounded bg-rose-100 text-rose-800 border border-rose-300">DISAPPROVED / RETURNED ⚠️</span>'
+    };
+    document.getElementById("statAppraisalStatus").innerHTML = statusBadgeMap[appMeta.status] || `<span class="px-2 py-0.5 text-xs font-bold rounded bg-slate-100 text-slate-800 border border-slate-300">${appMeta.status}</span>`;
+
     document.getElementById("statDownchainCount").innerText = `${currentPmsData.downchain_total_count} Reports`;
 
     document.getElementById("selfCommentsInput").value = appMeta.self_comments || "";
@@ -391,6 +399,83 @@ function renderKraTables() {
     const pms = currentPmsData.pms;
     const sec1Weight = pms.section_settings ? pms.section_settings.section1_weightage_percent : 70.0;
     const sec2Weight = pms.section_settings ? pms.section_settings.section2_weightage_percent : 30.0;
+
+    const appStatus = currentPmsData.appraisal_status ? currentPmsData.appraisal_status.status : "DRAFT";
+    const isFreezed = appStatus === "SUBMITTED_SELF" || appStatus === "APPROVED" || appStatus === "MANAGER_REVIEWED";
+    const isRejected = appStatus === "REJECTED";
+
+    // Freeze / Unfreeze Notice Banners
+    const freezeAlertContainer = document.getElementById("appraisalFreezeAlertContainer");
+    if (freezeAlertContainer) {
+        if (isFreezed) {
+            freezeAlertContainer.innerHTML = `
+                <div class="bg-sky-50 border border-sky-200 text-sky-900 rounded-xl p-3 sm:p-4 mb-3 sm:mb-4 flex items-center justify-between gap-3 shadow-xs">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="lock" class="w-5 h-5 text-sky-600 flex-shrink-0"></i>
+                        <div>
+                            <div class="font-bold text-xs sm:text-sm">🔒 Appraisal Submitted & Freezed for Edits</div>
+                            <p class="text-[11px] text-sky-700">Section 1 & Section 2 KRAs have been submitted to your reporting manager and are locked for changes unless disapproved/returned by your manager.</p>
+                        </div>
+                    </div>
+                    <span class="px-2.5 py-1 text-xs font-bold rounded-lg bg-sky-600 text-white shadow-xs whitespace-nowrap">Locked 🔒</span>
+                </div>
+            `;
+        } else if (isRejected) {
+            freezeAlertContainer.innerHTML = `
+                <div class="bg-rose-50 border border-rose-200 text-rose-900 rounded-xl p-3 sm:p-4 mb-3 sm:mb-4 flex items-center justify-between gap-3 shadow-xs">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="alert-triangle" class="w-5 h-5 text-rose-600 flex-shrink-0"></i>
+                        <div>
+                            <div class="font-bold text-xs sm:text-sm">⚠️ Appraisal Disapproved / Returned for Edits</div>
+                            <p class="text-[11px] text-rose-700">Your reporting manager has disapproved the appraisal. Section 1 & Section 2 KRAs have been unfrozen. Please update your target outcomes/ratings and click "Submit Self Appraisal" again.</p>
+                        </div>
+                    </div>
+                    <span class="px-2.5 py-1 text-xs font-bold rounded-lg bg-rose-600 text-white shadow-xs whitespace-nowrap">Unfrozen ⚠️</span>
+                </div>
+            `;
+        } else {
+            freezeAlertContainer.innerHTML = "";
+        }
+    }
+
+    // Toggle Add KRA Buttons Visibility when freezed
+    const addSec1Btn = document.getElementById("addSec1Btn");
+    const addSec2Btn = document.getElementById("addSec2Btn");
+    if (addSec1Btn) addSec1Btn.style.display = isFreezed ? "none" : "inline-flex";
+    if (addSec2Btn) addSec2Btn.style.display = isFreezed ? "none" : "inline-flex";
+
+    // Dynamic Action Buttons
+    const actionBox = document.getElementById("appraisalActionButtonsBox");
+    if (actionBox) {
+        if (isFreezed) {
+            actionBox.innerHTML = `
+                <button onclick="submitAppraisalForm('APPROVED')" class="w-full sm:w-auto px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5">
+                    <i data-lucide="check-circle" class="w-4 h-4"></i> Approve Appraisal (Reporting Manager)
+                </button>
+                <button onclick="submitAppraisalForm('REJECTED')" class="w-full sm:w-auto px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5">
+                    <i data-lucide="x-circle" class="w-4 h-4"></i> Disapprove / Reject Appraisal (Return for Edits)
+                </button>
+            `;
+        } else if (isRejected) {
+            actionBox.innerHTML = `
+                <button onclick="submitAppraisalForm('DRAFT')" class="w-full sm:w-auto px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold text-xs rounded-xl transition text-center">
+                    Save Draft
+                </button>
+                <button onclick="submitAppraisalForm('SUBMITTED_SELF')" class="w-full sm:w-auto px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5">
+                    <i data-lucide="send" class="w-4 h-4"></i> Re-Submit Self Appraisal
+                </button>
+            `;
+        } else {
+            actionBox.innerHTML = `
+                <button onclick="submitAppraisalForm('DRAFT')" class="w-full sm:w-auto px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold text-xs rounded-xl transition text-center">
+                    Save Draft
+                </button>
+                <button onclick="submitAppraisalForm('SUBMITTED_SELF')" class="w-full sm:w-auto px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5">
+                    <i data-lucide="send" class="w-4 h-4"></i> Submit Self Appraisal
+                </button>
+            `;
+        }
+    }
 
     // Dynamic Banner & Labels
     document.getElementById("bannerFormulaTitle").innerText = `${sec1Weight}% Section 1 (Current EVA) + ${sec2Weight}% Section 2 (Future EVA)`;
@@ -445,6 +530,11 @@ function renderKraTables() {
         document.getElementById("sec2ErrorMessageText").innerText = pms.upcoming_year.weightage_error || `Error: Section 2 KRA weightages sum to ${sec2Sum}%, but must equal exactly 100%!`;
     }
 
+    const disabledAttr = isFreezed ? 'disabled' : '';
+    const inputStyleClass = isFreezed ? 
+        'w-20 text-right text-xs p-1 border border-slate-200 rounded bg-slate-100 text-slate-500 cursor-not-allowed font-semibold' : 
+        'w-20 text-right text-xs p-1 border border-slate-300 rounded focus:ring-1 focus:ring-sky-500 font-bold';
+
     // SECTION 1 - Desktop Table & Mobile Cards
     const presentTbody = document.getElementById("presentKraTableBody");
     const presentCardsContainer = document.getElementById("presentKraMobileCards");
@@ -464,9 +554,9 @@ function renderKraTables() {
                     <td class="p-3 font-medium text-slate-600">${kra.metric_unit}</td>
                     <td class="p-3 text-right font-semibold text-slate-700">${kra.target_value}</td>
                     <td class="p-3 text-right">
-                        <input type="number" step="0.01" value="${kra.actual_outcome}" 
+                        <input type="number" step="0.01" value="${kra.actual_outcome}" ${disabledAttr}
                             onchange="updateKraOutcome(${kra.id}, this.value, ${kra.self_rating_percent}, ${kra.manager_rating_percent})"
-                            class="w-20 text-right text-xs p-1 border border-slate-300 rounded focus:ring-1 focus:ring-sky-500">
+                            class="${inputStyleClass}">
                     </td>
                     <td class="p-3 text-right font-bold ${kra.achievement_percent >= 100 ? 'text-emerald-600' : 'text-amber-600'}">
                         ${kra.achievement_percent}%
@@ -477,9 +567,13 @@ function renderKraTables() {
                     </td>
                     <td class="p-3 text-right font-extrabold text-sky-900">${kra.weighted_contribution}%</td>
                     <td class="p-3 text-center">
-                        <button onclick="deleteKra(${kra.id})" class="text-rose-500 hover:text-rose-700 p-1">
-                            <i data-lucide="trash-2" class="w-4 h-4"></i>
-                        </button>
+                        ${isFreezed ? `
+                            <span class="text-slate-400 text-xs font-semibold" title="Locked during submission">🔒</span>
+                        ` : `
+                            <button onclick="deleteKra(${kra.id})" class="text-rose-500 hover:text-rose-700 p-1">
+                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            </button>
+                        `}
                     </td>
                 </tr>
             `).join("");
@@ -494,9 +588,13 @@ function renderKraTables() {
                             <h4 class="text-xs font-bold text-slate-900 mt-1">${kra.lever_name}</h4>
                             ${kra.description ? `<p class="text-[10px] text-slate-500">${kra.description}</p>` : ''}
                         </div>
-                        <button onclick="deleteKra(${kra.id})" class="text-rose-500 p-1">
-                            <i data-lucide="trash-2" class="w-4 h-4"></i>
-                        </button>
+                        ${isFreezed ? `
+                            <span class="text-slate-400 text-xs font-semibold">🔒</span>
+                        ` : `
+                            <button onclick="deleteKra(${kra.id})" class="text-rose-500 p-1">
+                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            </button>
+                        `}
                     </div>
 
                     <div class="grid grid-cols-2 gap-2 bg-slate-50 p-2 rounded-lg border border-slate-100 text-xs">
@@ -506,9 +604,9 @@ function renderKraTables() {
                         </div>
                         <div>
                             <span class="text-[10px] text-slate-500 block">Actual Outcome</span>
-                            <input type="number" step="0.01" value="${kra.actual_outcome}" 
+                            <input type="number" step="0.01" value="${kra.actual_outcome}" ${disabledAttr}
                                 onchange="updateKraOutcome(${kra.id}, this.value, ${kra.self_rating_percent}, ${kra.manager_rating_percent})"
-                                class="w-full text-right font-bold text-xs p-1 border border-slate-300 rounded bg-white focus:ring-1 focus:ring-sky-500">
+                                class="${isFreezed ? 'w-full text-right text-xs p-1 border border-slate-200 rounded bg-slate-100 text-slate-500 cursor-not-allowed' : 'w-full text-right font-bold text-xs p-1 border border-slate-300 rounded bg-white focus:ring-1 focus:ring-sky-500'}">
                         </div>
                     </div>
 
@@ -550,9 +648,9 @@ function renderKraTables() {
                     <td class="p-3 font-medium text-slate-600">${kra.metric_unit}</td>
                     <td class="p-3 text-right font-semibold text-slate-700">${kra.target_value}</td>
                     <td class="p-3 text-right">
-                        <input type="number" step="0.01" value="${kra.actual_outcome}" 
+                        <input type="number" step="0.01" value="${kra.actual_outcome}" ${disabledAttr}
                             onchange="updateKraOutcome(${kra.id}, this.value, ${kra.self_rating_percent}, ${kra.manager_rating_percent})"
-                            class="w-20 text-right text-xs p-1 border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500">
+                            class="${inputStyleClass}">
                     </td>
                     <td class="p-3 text-right font-bold ${kra.achievement_percent >= 100 ? 'text-emerald-600' : 'text-amber-600'}">
                         ${kra.achievement_percent}%
@@ -563,9 +661,13 @@ function renderKraTables() {
                     </td>
                     <td class="p-3 text-right font-extrabold text-indigo-900">${kra.weighted_contribution}%</td>
                     <td class="p-3 text-center">
-                        <button onclick="deleteKra(${kra.id})" class="text-rose-500 hover:text-rose-700 p-1">
-                            <i data-lucide="trash-2" class="w-4 h-4"></i>
-                        </button>
+                        ${isFreezed ? `
+                            <span class="text-slate-400 text-xs font-semibold" title="Locked during submission">🔒</span>
+                        ` : `
+                            <button onclick="deleteKra(${kra.id})" class="text-rose-500 hover:text-rose-700 p-1">
+                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            </button>
+                        `}
                     </td>
                 </tr>
             `).join("");
@@ -580,9 +682,13 @@ function renderKraTables() {
                             <h4 class="text-xs font-bold text-slate-900 mt-1">${kra.lever_name}</h4>
                             ${kra.description ? `<p class="text-[10px] text-slate-500">${kra.description}</p>` : ''}
                         </div>
-                        <button onclick="deleteKra(${kra.id})" class="text-rose-500 p-1">
-                            <i data-lucide="trash-2" class="w-4 h-4"></i>
-                        </button>
+                        ${isFreezed ? `
+                            <span class="text-slate-400 text-xs font-semibold">🔒</span>
+                        ` : `
+                            <button onclick="deleteKra(${kra.id})" class="text-rose-500 p-1">
+                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            </button>
+                        `}
                     </div>
 
                     <div class="grid grid-cols-2 gap-2 bg-slate-50 p-2 rounded-lg border border-slate-100 text-xs">
@@ -592,9 +698,9 @@ function renderKraTables() {
                         </div>
                         <div>
                             <span class="text-[10px] text-slate-500 block">Actual Outcome</span>
-                            <input type="number" step="0.01" value="${kra.actual_outcome}" 
+                            <input type="number" step="0.01" value="${kra.actual_outcome}" ${disabledAttr}
                                 onchange="updateKraOutcome(${kra.id}, this.value, ${kra.self_rating_percent}, ${kra.manager_rating_percent})"
-                                class="w-full text-right font-bold text-xs p-1 border border-slate-300 rounded bg-white focus:ring-1 focus:ring-indigo-500">
+                                class="${isFreezed ? 'w-full text-right text-xs p-1 border border-slate-200 rounded bg-slate-100 text-slate-500 cursor-not-allowed' : 'w-full text-right font-bold text-xs p-1 border border-slate-300 rounded bg-white focus:ring-1 focus:ring-indigo-500'}">
                         </div>
                     </div>
 

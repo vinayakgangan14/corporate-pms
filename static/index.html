@@ -207,6 +207,9 @@
                 </div>
             </div>
 
+            <!-- FREEZE / REJECTED STATUS NOTIFICATION BANNER CONTAINER -->
+            <div id="appraisalFreezeAlertContainer"></div>
+
             <!-- SECTION 1: KEY DELIVERABLES IMPACT CURRENT EVA -->
             <div class="bg-white rounded-xl sm:rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <div class="px-3 sm:px-6 py-3 bg-slate-50 border-b border-slate-200 flex flex-row items-center justify-between gap-2">
@@ -222,7 +225,7 @@
                             <p class="text-[10px] text-slate-500 hidden sm:block">Key Result Areas & deliverables impacting present year EVA.</p>
                         </div>
                     </div>
-                    <button onclick="openAddKRAModal('PRESENT_YEAR_70')" class="px-2.5 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-[11px] sm:text-xs font-semibold rounded-lg flex items-center justify-center gap-1 transition">
+                    <button id="addSec1Btn" onclick="openAddKRAModal('PRESENT_YEAR_70')" class="px-2.5 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-[11px] sm:text-xs font-semibold rounded-lg flex items-center justify-center gap-1 transition">
                         <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i> <span class="hidden sm:inline">Add Section 1 KRA</span><span class="sm:hidden">Add KRA</span>
                     </button>
                 </div>
@@ -276,7 +279,7 @@
                             <p class="text-[10px] text-slate-500 hidden sm:block">Future strategic targets & readiness initiatives.</p>
                         </div>
                     </div>
-                    <button onclick="openAddKRAModal('UPCOMING_YEAR_30')" class="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] sm:text-xs font-semibold rounded-lg flex items-center justify-center gap-1 transition">
+                    <button id="addSec2Btn" onclick="openAddKRAModal('UPCOMING_YEAR_30')" class="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] sm:text-xs font-semibold rounded-lg flex items-center justify-center gap-1 transition">
                         <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i> <span class="hidden sm:inline">Add Section 2 KRA</span><span class="sm:hidden">Add Goal</span>
                     </button>
                 </div>
@@ -331,7 +334,7 @@
                     </div>
                 </div>
 
-                <div class="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 pt-1">
+                <div id="appraisalActionButtonsBox" class="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 pt-1">
                     <button onclick="submitAppraisalForm('DRAFT')" class="w-full sm:w-auto px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold text-xs rounded-xl transition text-center">
                         Save Draft
                     </button>
