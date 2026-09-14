@@ -4,7 +4,8 @@
  */
 
 let allUsers = [];
-let currentUserId = null;
+let loggedInUserId = null;
+let viewingUserId = null;
 let currentPmsData = null;
 let activeSettings = { section1_weightage: 70.0, section2_weightage: 30.0 };
 let roleSettings = {};
@@ -112,7 +113,7 @@ async function handleSaveRoleWeightage(role) {
         if (res.ok) {
             alert(data.message);
             await fetchRoleSettings();
-            if (currentUserId) await loadUserDashboard(currentUserId);
+            if (viewingUserId) await loadUserDashboard(viewingUserId);
         } else {
             alert("Error: " + data.detail);
         }
@@ -130,14 +131,18 @@ async function fetchUsers() {
         populateAdminPersonaDropdown();
         renderAllUsersPersonaTable();
 
-        if (!currentUserId && allUsers.length > 0) {
+        if (!loggedInUserId && allUsers.length > 0) {
             const mdUser = allUsers.find(u => u.role === "MD") || allUsers[0];
-            currentUserId = mdUser.id;
+            loggedInUserId = mdUser.id;
         }
 
-        if (currentUserId) {
-            document.getElementById("userSelector").value = currentUserId;
-            await loadUserDashboard(currentUserId);
+        if (!viewingUserId) {
+            viewingUserId = loggedInUserId;
+        }
+
+        if (loggedInUserId) {
+            document.getElementById("userSelector").value = loggedInUserId;
+            await loadUserDashboard(viewingUserId);
         }
     } catch (err) {
         console.error("Error loading users:", err);
@@ -198,111 +203,64 @@ async function handleSavePersonaFormWeightages(e) {
 }
 
 function renderAllUsersPersonaTable() {
-    const tbody = document.getElementById("allPersonasWeightageTableBody");
-    const badge = document.getElementById("personaWeightCountBadge");
+    const tbody = document.getElementById("allUsersPersonaTableBody");
     if (!tbody) return;
 
-    if (badge) badge.innerText = `${allUsers.length} Registered Personas`;
-
     tbody.innerHTML = allUsers.map(u => {
-        const sec1 = u.effective_section1_weight;
-        const sec2 = u.effective_section2_weight;
-        const total = sec1 + sec2;
-        const isValid = Math.abs(total - 100.0) < 0.1;
+        const isOverride = u.weightage_source === "custom_override";
+        const badge = isOverride ? 
+            `<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-900/80 text-amber-300 border border-amber-700">Custom Override</span>` : 
+            `<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-slate-800 text-slate-300 border border-slate-700">Inherited (${u.role})</span>`;
 
         return `
             <tr class="hover:bg-slate-800/50 transition">
-                <td class="py-2.5 px-3">
-                    <div class="font-bold text-white flex items-center gap-1.5">
-                        ${u.name}
-                        <span class="px-1.5 py-0.5 text-[9px] font-bold rounded bg-sky-950 text-sky-300 border border-sky-800">${u.role}</span>
-                    </div>
-                    <div class="text-[11px] text-slate-400">${u.designation} (${u.department_name || 'Executive'})</div>
-                </td>
-                <td class="py-2.5 px-3">
-                    <input type="number" step="1" min="1" max="99" id="table_sec1_${u.id}" value="${sec1}"
-                        onchange="validateTableRowPersonaWeight('${u.id}')"
-                        class="w-20 text-xs p-1.5 bg-slate-950 text-sky-300 font-bold border border-slate-700 rounded focus:ring-2 focus:ring-sky-500 focus:outline-none">
-                </td>
-                <td class="py-2.5 px-3">
-                    <input type="number" step="1" min="1" max="99" id="table_sec2_${u.id}" value="${sec2}"
-                        onchange="validateTableRowPersonaWeight('${u.id}')"
-                        class="w-20 text-xs p-1.5 bg-slate-950 text-indigo-300 font-bold border border-slate-700 rounded focus:ring-2 focus:ring-indigo-500 focus:outline-none">
-                </td>
-                <td class="py-2.5 px-3" id="table_status_${u.id}">
-                    ${isValid ? 
-                        '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-900/80 text-emerald-300 border border-emerald-700">100% ✓</span>' : 
-                        '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-rose-900/80 text-rose-300 border border-rose-700">Error ⚠</span>'}
-                </td>
+                <td class="py-2.5 px-3 font-bold text-white">${u.name}</td>
+                <td class="py-2.5 px-3 text-sky-400 font-semibold">${u.role}</td>
+                <td class="py-2.5 px-3 text-slate-300">${u.designation}</td>
+                <td class="py-2.5 px-3 text-center text-sky-300 font-bold">${u.effective_section1_weight}% / ${u.effective_section2_weight}%</td>
+                <td class="py-2.5 px-3 text-center">${badge}</td>
                 <td class="py-2.5 px-3 text-right">
-                    <div class="flex justify-end gap-1.5">
-                        <button onclick="handleSaveTableRowPersonaWeight(${u.id})" class="px-2.5 py-1 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs rounded-lg shadow transition inline-flex items-center gap-1">
-                            <i data-lucide="save" class="w-3.5 h-3.5"></i> Save
+                    ${isOverride ? `
+                        <button onclick="handleResetUserWeightages(${u.id})" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 text-[11px] font-semibold rounded-lg transition inline-flex items-center gap-1">
+                            Reset Default
                         </button>
-                        <button onclick="handleDeleteUser(${u.id}, '${u.name}')" class="px-2 py-1 bg-rose-600/80 hover:bg-rose-500 text-white font-bold text-xs rounded-lg shadow transition inline-flex items-center gap-1" title="Delete employee from organization">
-                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Delete
-                        </button>
-                    </div>
+                    ` : '<span class="text-slate-600 text-xs">--</span>'}
                 </td>
             </tr>
         `;
     }).join("");
-    lucide.createIcons();
 }
 
-function validateTableRowPersonaWeight(userId) {
-    const sec1 = parseFloat(document.getElementById(`table_sec1_${userId}`).value) || 0;
-    const sec2 = parseFloat(document.getElementById(`table_sec2_${userId}`).value) || 0;
-    const statusCell = document.getElementById(`table_status_${userId}`);
-    const total = sec1 + sec2;
-    if (Math.abs(total - 100.0) < 0.1) {
-        statusCell.innerHTML = '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-900/80 text-emerald-300 border border-emerald-700">100% ✓</span>';
-    } else {
-        statusCell.innerHTML = `<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-rose-900/80 text-rose-300 border border-rose-700">${total}% ⚠</span>`;
-    }
-}
-
-async function handleSaveTableRowPersonaWeight(userId) {
-    const sec1 = parseFloat(document.getElementById(`table_sec1_${userId}`).value) || 0;
-    const sec2 = parseFloat(document.getElementById(`table_sec2_${userId}`).value) || 0;
-    if (Math.abs(sec1 + sec2 - 100.0) >= 0.1) {
-        alert(`Error: Section 1 (${sec1}%) and Section 2 (${sec2}%) for persona #${userId} must sum to exactly 100%!`);
-        return;
-    }
-
+async function handleResetUserWeightages(userId) {
     try {
         const res = await fetch(`/api/users/${userId}/weightages`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ section1_weight: sec1, section2_weight: sec2 })
+            body: JSON.stringify({ section1_weight: -1, section2_weight: -1 })
         });
-        const data = await res.json();
+        const result = await res.json();
         if (res.ok) {
-            alert(data.message);
+            alert(result.message);
             await fetchUsers();
         } else {
-            alert("Error: " + data.detail);
+            alert("Error: " + result.detail);
         }
     } catch (err) {
-        console.error("Error saving user weightage:", err);
+        console.error("Error resetting weightages:", err);
     }
 }
 
-async function handleDeleteUser(userId, userName) {
-    if (!confirm(`Are you sure you want to remove '${userName}' from the organization?\n\nThis will remove their profile and associated KRAs from cloud Supabase.`)) {
-        return;
-    }
+async function handleDeleteUser(userId) {
+    if (!confirm(`Are you sure you want to remove employee #${userId} from the organization? This will delete their KRAs and update downline reporting lines.`)) return;
 
     try {
-        const res = await fetch(`/api/users/${userId}`, {
-            method: "DELETE"
-        });
+        const res = await fetch(`/api/users/${userId}`, { method: "DELETE" });
         const data = await res.json();
         if (res.ok) {
             alert(data.message);
             await fetchUsers();
-            if (currentUserId === userId && allUsers.length > 0) {
-                switchActiveUser(allUsers[0].id);
+            if ((loggedInUserId === userId || viewingUserId === userId) && allUsers.length > 0) {
+                handleUserSelectorChange(allUsers[0].id);
             }
         } else {
             alert("Delete Error: " + data.detail);
@@ -336,9 +294,25 @@ function populateManagerDropdown() {
         allUsers.map(u => `<option value="${u.id}">${u.name} (${u.role} - ${u.designation})</option>`).join("");
 }
 
-async function switchActiveUser(userId) {
-    currentUserId = parseInt(userId);
-    await loadUserDashboard(currentUserId);
+async function handleUserSelectorChange(userId) {
+    loggedInUserId = parseInt(userId);
+    viewingUserId = loggedInUserId;
+    await loadUserDashboard(viewingUserId);
+}
+
+async function reviewReportKRA(userId) {
+    viewingUserId = parseInt(userId);
+    switchTab("appraisalTab");
+    await loadUserDashboard(viewingUserId);
+    const sel = document.getElementById("userSelector");
+    if (sel) sel.value = loggedInUserId;
+}
+
+async function returnToMyDashboard() {
+    viewingUserId = loggedInUserId;
+    await loadUserDashboard(viewingUserId);
+    const sel = document.getElementById("userSelector");
+    if (sel) sel.value = loggedInUserId;
 }
 
 async function loadUserDashboard(userId) {
@@ -399,13 +373,46 @@ function renderHeaderStats() {
 
 function renderKraTables() {
     if (!currentPmsData) return;
+    const u = currentPmsData.user;
     const pms = currentPmsData.pms;
     const sec1Weight = pms.section_settings ? pms.section_settings.section1_weightage_percent : 70.0;
     const sec2Weight = pms.section_settings ? pms.section_settings.section2_weightage_percent : 30.0;
 
     const appStatus = currentPmsData.appraisal_status ? currentPmsData.appraisal_status.status : "DRAFT";
-    const isFreezed = appStatus === "SUBMITTED_SELF" || appStatus === "MANAGER_APPROVED" || appStatus === "APPROVED" || appStatus === "MANAGER_REVIEWED";
+    const isFreezed = appStatus === "SUBMITTED_SELF" || appStatus === "MANAGER_APPROVED" || appStatus === "APPROVED";
     const isRejected = appStatus === "REJECTED";
+
+    const isViewingSelf = loggedInUserId === u.id;
+    const loggedInUser = allUsers.find(usr => usr.id === loggedInUserId);
+    const mgrName = u.manager_name || "Reporting Manager";
+    const mdUser = allUsers.find(usr => usr.role === "MD");
+    const mdName = mdUser ? mdUser.name : "Managing Director";
+
+    // Reviewing Downline Report Context Banner
+    const contextBanner = document.getElementById("reviewingReportContextBanner");
+    if (contextBanner) {
+        if (!isViewingSelf && loggedInUser) {
+            contextBanner.innerHTML = `
+                <div class="bg-amber-50 border border-amber-300 text-amber-900 rounded-xl p-3 sm:p-4 mb-3 sm:mb-4 flex items-center justify-between gap-3 shadow-xs">
+                    <div class="flex items-center gap-2.5">
+                        <i data-lucide="eye" class="w-5 h-5 text-amber-600 flex-shrink-0"></i>
+                        <div>
+                            <div class="font-extrabold text-xs sm:text-sm text-amber-950">
+                                Reviewing KRA Sheet for Downline Report: <span class="text-sky-900 font-black underline">${u.name}</span>
+                                <span class="text-[11px] font-normal text-amber-800 ml-1">(${u.role} - ${u.designation})</span>
+                            </div>
+                            <div class="text-[11px] text-amber-800 font-medium">Logged in Evaluator Persona: <strong>${loggedInUser.name}</strong> [${loggedInUser.role}]</div>
+                        </div>
+                    </div>
+                    <button onclick="returnToMyDashboard()" class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg shadow transition inline-flex items-center gap-1 flex-shrink-0">
+                        <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> Back to My Appraisal
+                    </button>
+                </div>
+            `;
+        } else {
+            contextBanner.innerHTML = "";
+        }
+    }
 
     // Freeze / Unfreeze Notice Banners
     const freezeAlertContainer = document.getElementById("appraisalFreezeAlertContainer");
@@ -416,8 +423,8 @@ function renderKraTables() {
                     <div class="flex items-center gap-2">
                         <i data-lucide="lock" class="w-5 h-5 text-sky-600 flex-shrink-0"></i>
                         <div>
-                            <div class="font-bold text-xs sm:text-sm">🔒 Submitted to Reporting Manager (Suraj Pant)</div>
-                            <p class="text-[11px] text-sky-700">Section 1 & Section 2 KRAs have been submitted and are locked for changes pending Reporting Manager review.</p>
+                            <div class="font-bold text-xs sm:text-sm">🔒 Submitted to Reporting Manager (${mgrName})</div>
+                            <p class="text-[11px] text-sky-700">Section 1 & Section 2 KRAs have been submitted and are locked for changes pending review by ${mgrName}.</p>
                         </div>
                     </div>
                     <span class="px-2.5 py-1 text-xs font-bold rounded-lg bg-sky-600 text-white shadow-xs whitespace-nowrap">Locked 🔒</span>
@@ -429,8 +436,8 @@ function renderKraTables() {
                     <div class="flex items-center gap-2">
                         <i data-lucide="shield-check" class="w-5 h-5 text-indigo-600 flex-shrink-0"></i>
                         <div>
-                            <div class="font-bold text-xs sm:text-sm">⏳ Approved by Manager — Submitted to Managing Director (Rajesh Sarada)</div>
-                            <p class="text-[11px] text-indigo-700">Reporting Manager has approved. Section 1 & Section 2 KRAs are locked pending final sign-off by Managing Director.</p>
+                            <div class="font-bold text-xs sm:text-sm">⏳ Approved by Manager (${mgrName}) — Submitted to Managing Director (${mdName})</div>
+                            <p class="text-[11px] text-indigo-700">Approved by ${mgrName}. Section 1 & Section 2 KRAs are locked pending final sign-off by Managing Director (${mdName}).</p>
                         </div>
                     </div>
                     <span class="px-2.5 py-1 text-xs font-bold rounded-lg bg-indigo-600 text-white shadow-xs whitespace-nowrap">Pending MD ⏳</span>
@@ -442,7 +449,7 @@ function renderKraTables() {
                     <div class="flex items-center gap-2">
                         <i data-lucide="check-circle-2" class="w-5 h-5 text-emerald-600 flex-shrink-0"></i>
                         <div>
-                            <div class="font-bold text-xs sm:text-sm">✓ Fully Approved & Signed Off by Managing Director</div>
+                            <div class="font-bold text-xs sm:text-sm">✓ Fully Approved & Signed Off by Managing Director (${mdName})</div>
                             <p class="text-[11px] text-emerald-700">This appraisal has completed all approval tiers and is finalized.</p>
                         </div>
                     </div>
@@ -467,15 +474,14 @@ function renderKraTables() {
         }
     }
 
-    // Toggle Add KRA Buttons Visibility when freezed
+    // Toggle Add KRA Buttons Visibility when freezed or when reviewing downline report
     const addSec1Btn = document.getElementById("addSec1Btn");
     const addSec2Btn = document.getElementById("addSec2Btn");
-    if (addSec1Btn) addSec1Btn.style.display = isFreezed ? "none" : "inline-flex";
-    if (addSec2Btn) addSec2Btn.style.display = isFreezed ? "none" : "inline-flex";
+    if (addSec1Btn) addSec1Btn.style.display = (isFreezed || !isViewingSelf) ? "none" : "inline-flex";
+    if (addSec2Btn) addSec2Btn.style.display = (isFreezed || !isViewingSelf) ? "none" : "inline-flex";
 
-    // Dynamic Action Buttons: Enforce persona permissions so employee never sees Approve/Reject buttons on their own page
+    // Dynamic Action Buttons
     const actionBox = document.getElementById("appraisalActionButtonsBox");
-    const isViewingSelf = currentUserId === currentPmsData.user.id;
 
     if (actionBox) {
         if (isViewingSelf) {
@@ -492,46 +498,57 @@ function renderKraTables() {
             } else if (appStatus === "SUBMITTED_SELF") {
                 actionBox.innerHTML = `
                     <div class="px-4 py-2 bg-sky-50 text-sky-800 border border-sky-200 font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs">
-                        <i data-lucide="clock" class="w-4 h-4 text-sky-600"></i> Submitted to Reporting Manager (Suraj Pant) — Pending Evaluation 🔒
+                        <i data-lucide="clock" class="w-4 h-4 text-sky-600"></i> Submitted to Reporting Manager (${mgrName}) — Pending Evaluation 🔒
                     </div>
                 `;
             } else if (appStatus === "MANAGER_APPROVED") {
                 actionBox.innerHTML = `
                     <div class="px-4 py-2 bg-indigo-50 text-indigo-800 border border-indigo-200 font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs">
-                        <i data-lucide="shield-check" class="w-4 h-4 text-indigo-600"></i> Approved by Reporting Manager — Pending MD Final Sign-Off ⏳
+                        <i data-lucide="shield-check" class="w-4 h-4 text-indigo-600"></i> Approved by Reporting Manager (${mgrName}) — Pending MD (${mdName}) Final Sign-Off ⏳
                     </div>
                 `;
             } else if (appStatus === "APPROVED") {
                 actionBox.innerHTML = `
                     <div class="px-4 py-2 bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs">
-                        <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600"></i> Fully Approved & Finalized by Managing Director (Rajesh Sarada) ✓
+                        <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600"></i> Fully Approved & Finalized by Managing Director (${mdName}) ✓
                     </div>
                 `;
             }
         } else {
-            // Manager (Suraj Pant) or MD (Rajesh Sarada) reviewing downline report's appraisal sheet
+            // Manager or MD reviewing downline report's appraisal sheet
+            const evaluatorName = loggedInUser ? loggedInUser.name : "Evaluator";
+            const evaluatorRole = loggedInUser ? loggedInUser.role : "";
+
             if (appStatus === "SUBMITTED_SELF") {
                 actionBox.innerHTML = `
                     <button onclick="submitAppraisalForm('MANAGER_APPROVED')" class="w-full sm:w-auto px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5">
-                        <i data-lucide="check-circle" class="w-4 h-4"></i> Level 1 Approve (Reporting Manager Suraj Pant)
+                        <i data-lucide="check-circle" class="w-4 h-4"></i> Level 1 Approve (${evaluatorName})
                     </button>
                     <button onclick="submitAppraisalForm('REJECTED')" class="w-full sm:w-auto px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5">
                         <i data-lucide="x-circle" class="w-4 h-4"></i> Disapprove / Reject (Return to Employee)
                     </button>
                 `;
             } else if (appStatus === "MANAGER_APPROVED") {
-                actionBox.innerHTML = `
-                    <button onclick="submitAppraisalForm('APPROVED')" class="w-full sm:w-auto px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5">
-                        <i data-lucide="crown" class="w-4 h-4"></i> MD Final Approve (Managing Director Rajesh Sarada)
-                    </button>
-                    <button onclick="submitAppraisalForm('REJECTED')" class="w-full sm:w-auto px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5">
-                        <i data-lucide="x-circle" class="w-4 h-4"></i> MD Disapprove / Reject (Return to Employee)
-                    </button>
-                `;
+                if (evaluatorRole === "MD" || evaluatorRole === "ADMIN") {
+                    actionBox.innerHTML = `
+                        <button onclick="submitAppraisalForm('APPROVED')" class="w-full sm:w-auto px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5">
+                            <i data-lucide="crown" class="w-4 h-4"></i> MD Final Approve (${evaluatorName})
+                        </button>
+                        <button onclick="submitAppraisalForm('REJECTED')" class="w-full sm:w-auto px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5">
+                            <i data-lucide="x-circle" class="w-4 h-4"></i> MD Disapprove / Reject (Return to Employee)
+                        </button>
+                    `;
+                } else {
+                    actionBox.innerHTML = `
+                        <div class="px-4 py-2 bg-indigo-50 text-indigo-800 border border-indigo-200 font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs">
+                            <i data-lucide="shield-check" class="w-4 h-4 text-indigo-600"></i> Approved by Reporting Manager (${mgrName}) — Sent to Managing Director (${mdName}) for Final Sign-Off ⏳
+                        </div>
+                    `;
+                }
             } else if (appStatus === "APPROVED") {
                 actionBox.innerHTML = `
                     <div class="px-4 py-2 bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs">
-                        <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600"></i> Appraisal Fully Approved & Signed Off by Managing Director
+                        <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600"></i> Appraisal Fully Approved & Signed Off by Managing Director (${mdName})
                     </div>
                 `;
             } else if (appStatus === "REJECTED") {
@@ -559,242 +576,134 @@ function renderKraTables() {
     document.getElementById("sec1PillBadge").innerText = `${sec1Weight}%`;
     document.getElementById("sec2PillBadge").innerText = `${sec2Weight}%`;
 
-    // Summary Scores
-    document.getElementById("summaryPresent70Score").innerText = pms.present_year.raw_score.toFixed(1) + "%";
-    document.getElementById("summaryUpcoming30Score").innerText = pms.upcoming_year.raw_score.toFixed(1) + "%";
+    const sec1Pms = pms.present_year;
+    document.getElementById("summaryPresent70Score").innerText = sec1Pms.raw_score.toFixed(1) + "%";
+    document.getElementById("summaryPresentWeightSum").innerText = `Sum: ${sec1Pms.total_kra_weight_sum}%`;
+    
+    const sec1Badge = document.getElementById("sec1WeightStatusBadge");
+    sec1Badge.innerText = sec1Pms.is_valid_100_percent ? `Sum: ${sec1Pms.total_kra_weight_sum}% ✓` : `Sum: ${sec1Pms.total_kra_weight_sum}% Error ⚠️`;
+    sec1Badge.className = `px-2 py-0.5 text-[9px] sm:text-[10px] font-bold rounded-full ${sec1Pms.is_valid_100_percent ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-rose-100 text-rose-800 border border-rose-300'}`;
+
+    const sec1ErrBanner = document.getElementById("sec1ErrorBanner");
+    if (sec1ErrBanner) {
+        if (!sec1Pms.is_valid_100_percent && sec1Pms.kras.length > 0) {
+            document.getElementById("sec1ErrorMessageText").innerText = sec1Pms.weightage_error;
+            sec1ErrBanner.classList.remove("hidden");
+        } else {
+            sec1ErrBanner.classList.add("hidden");
+        }
+    }
+
+    renderKraSectionRows("presentKraMobileCards", "presentKraDesktopRows", sec1Pms.kras, isFreezed || !isViewingSelf, isViewingSelf);
+
+    const sec2Pms = pms.upcoming_year;
+    document.getElementById("summaryUpcoming30Score").innerText = sec2Pms.raw_score.toFixed(1) + "%";
+    document.getElementById("summaryUpcomingWeightSum").innerText = `Sum: ${sec2Pms.total_kra_weight_sum}%`;
+
+    const sec2Badge = document.getElementById("sec2WeightStatusBadge");
+    sec2Badge.innerText = sec2Pms.is_valid_100_percent ? `Sum: ${sec2Pms.total_kra_weight_sum}% ✓` : `Sum: ${sec2Pms.total_kra_weight_sum}% Error ⚠️`;
+    sec2Badge.className = `px-2 py-0.5 text-[9px] sm:text-[10px] font-bold rounded-full ${sec2Pms.is_valid_100_percent ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-rose-100 text-rose-800 border border-rose-300'}`;
+
+    const sec2ErrBanner = document.getElementById("sec2ErrorBanner");
+    if (sec2ErrBanner) {
+        if (!sec2Pms.is_valid_100_percent && sec2Pms.kras.length > 0) {
+            document.getElementById("sec2ErrorMessageText").innerText = sec2Pms.weightage_error;
+            sec2ErrBanner.classList.remove("hidden");
+        } else {
+            sec2ErrBanner.classList.add("hidden");
+        }
+    }
+
+    renderKraSectionRows("upcomingKraMobileCards", "upcomingKraDesktopRows", sec2Pms.kras, isFreezed || !isViewingSelf, isViewingSelf);
+
     document.getElementById("summaryCompositeScore").innerText = pms.composite_score.toFixed(1) + "%";
-    document.getElementById("summaryGrade").innerText = `Grade ${pms.grade} (${pms.performance_band.split('/')[0]})`;
+    document.getElementById("summaryGrade").innerText = "Grade " + pms.grade;
+}
 
-    // --- SECTION 1 WEIGHTAGE SUM VALIDATION DISPLAY ---
-    const sec1Sum = pms.present_year.total_kra_weight_sum;
-    const isSec1Valid = pms.present_year.is_valid_100_percent;
-    document.getElementById("summaryPresentWeightSum").innerText = `Sum: ${sec1Sum}%`;
+function renderKraSectionRows(mobileId, desktopId, kras, isFreezed, isViewingSelf) {
+    const mobileContainer = document.getElementById(mobileId);
+    const desktopContainer = document.getElementById(desktopId);
 
-    const sec1StatusBadge = document.getElementById("sec1WeightStatusBadge");
-    const sec1ErrorBanner = document.getElementById("sec1ErrorBanner");
+    if (!mobileContainer || !desktopContainer) return;
 
-    if (isSec1Valid) {
-        sec1StatusBadge.className = "px-2 py-0.5 text-[9px] sm:text-[10px] font-bold rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300";
-        sec1StatusBadge.innerHTML = `Sum: ${sec1Sum}% ✓`;
-        sec1ErrorBanner.classList.add("hidden");
-    } else {
-        sec1StatusBadge.className = "px-2 py-0.5 text-[9px] sm:text-[10px] font-bold rounded-full bg-rose-100 text-rose-800 border border-rose-300 animate-pulse";
-        sec1StatusBadge.innerHTML = `Error: ${sec1Sum}% / 100% ⚠`;
-        sec1ErrorBanner.classList.remove("hidden");
-        document.getElementById("sec1ErrorMessageText").innerText = pms.present_year.weightage_error || `Error: Section 1 KRA weightages sum to ${sec1Sum}%, but must equal exactly 100%!`;
+    if (kras.length === 0) {
+        mobileContainer.innerHTML = `<div class="text-center py-4 text-xs text-slate-400 italic">No KRAs added yet to this section.</div>`;
+        desktopContainer.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-xs text-slate-400 italic">No KRAs added yet to this section.</td></tr>`;
+        return;
     }
 
-    // --- SECTION 2 WEIGHTAGE SUM VALIDATION DISPLAY ---
-    const sec2Sum = pms.upcoming_year.total_kra_weight_sum;
-    const isSec2Valid = pms.upcoming_year.is_valid_100_percent;
-    document.getElementById("summaryUpcomingWeightSum").innerText = `Sum: ${sec2Sum}%`;
-
-    const sec2StatusBadge = document.getElementById("sec2WeightStatusBadge");
-    const sec2ErrorBanner = document.getElementById("sec2ErrorBanner");
-
-    if (isSec2Valid) {
-        sec2StatusBadge.className = "px-2 py-0.5 text-[9px] sm:text-[10px] font-bold rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300";
-        sec2StatusBadge.innerHTML = `Sum: ${sec2Sum}% ✓`;
-        sec2ErrorBanner.classList.add("hidden");
-    } else {
-        sec2StatusBadge.className = "px-2 py-0.5 text-[9px] sm:text-[10px] font-bold rounded-full bg-rose-100 text-rose-800 border border-rose-300 animate-pulse";
-        sec2StatusBadge.innerHTML = `Error: ${sec2Sum}% / 100% ⚠`;
-        sec2ErrorBanner.classList.remove("hidden");
-        document.getElementById("sec2ErrorMessageText").innerText = pms.upcoming_year.weightage_error || `Error: Section 2 KRA weightages sum to ${sec2Sum}%, but must equal exactly 100%!`;
-    }
-
-    const disabledAttr = isFreezed ? 'disabled' : '';
-    const inputStyleClass = isFreezed ? 
-        'w-20 text-right text-xs p-1 border border-slate-200 rounded bg-slate-100 text-slate-500 cursor-not-allowed font-semibold' : 
-        'w-20 text-right text-xs p-1 border border-slate-300 rounded focus:ring-1 focus:ring-sky-500 font-bold';
-
-    // SECTION 1 - Desktop Table & Mobile Cards
-    const presentTbody = document.getElementById("presentKraTableBody");
-    const presentCardsContainer = document.getElementById("presentKraMobileCards");
-
-    if (pms.present_year.kras.length === 0) {
-        const emptyHtml = `<div class="p-4 text-center text-slate-400 italic text-xs">No Section 1 KRAs defined. Click "+ Add Section 1 KRA" above to add.</div>`;
-        if (presentTbody) presentTbody.innerHTML = `<tr><td colspan="9" class="p-4 text-center text-slate-400 italic">No Section 1 KRAs defined.</td></tr>`;
-        if (presentCardsContainer) presentCardsContainer.innerHTML = emptyHtml;
-    } else {
-        if (presentTbody) {
-            presentTbody.innerHTML = pms.present_year.kras.map(kra => `
-                <tr class="hover:bg-slate-50 transition">
-                    <td class="p-3">
-                        <div class="font-bold text-slate-900">${kra.lever_name}</div>
-                        <div class="text-[11px] text-slate-500">${kra.description || ''}</div>
-                    </td>
-                    <td class="p-3 font-medium text-slate-600">${kra.metric_unit}</td>
-                    <td class="p-3 text-right font-semibold text-slate-700">${kra.target_value}</td>
-                    <td class="p-3 text-right">
-                        <input type="number" step="0.01" value="${kra.actual_outcome}" ${disabledAttr}
-                            onchange="updateKraOutcome(${kra.id}, this.value, ${kra.self_rating_percent}, ${kra.manager_rating_percent})"
-                            class="${inputStyleClass}">
-                    </td>
-                    <td class="p-3 text-right font-bold ${kra.achievement_percent >= 100 ? 'text-emerald-600' : 'text-amber-600'}">
-                        ${kra.achievement_percent}%
-                    </td>
-                    <td class="p-3 text-right font-medium text-slate-600">${kra.weightage_percent}%</td>
-                    <td class="p-3 text-right">
-                        <span class="px-2 py-0.5 bg-sky-50 text-sky-700 font-bold rounded">${kra.computed_self_rating.toFixed(1)}%</span>
-                    </td>
-                    <td class="p-3 text-right font-extrabold text-sky-900">${kra.weighted_contribution}%</td>
-                    <td class="p-3 text-center">
-                        ${isFreezed ? `
-                            <span class="text-slate-400 text-xs font-semibold" title="Locked during submission">🔒</span>
-                        ` : `
-                            <button onclick="deleteKra(${kra.id})" class="text-rose-500 hover:text-rose-700 p-1">
-                                <i data-lucide="trash-2" class="w-4 h-4"></i>
-                            </button>
-                        `}
-                    </td>
-                </tr>
-            `).join("");
-        }
-
-        if (presentCardsContainer) {
-            presentCardsContainer.innerHTML = pms.present_year.kras.map(kra => `
-                <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-xs space-y-2">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <span class="text-[9px] font-bold text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-200 uppercase">${kra.metric_unit}</span>
-                            <h4 class="text-xs font-bold text-slate-900 mt-1">${kra.lever_name}</h4>
-                            ${kra.description ? `<p class="text-[10px] text-slate-500">${kra.description}</p>` : ''}
-                        </div>
-                        ${isFreezed ? `
-                            <span class="text-slate-400 text-xs font-semibold">🔒</span>
-                        ` : `
-                            <button onclick="deleteKra(${kra.id})" class="text-rose-500 p-1">
-                                <i data-lucide="trash-2" class="w-4 h-4"></i>
-                            </button>
-                        `}
-                    </div>
-
-                    <div class="grid grid-cols-2 gap-2 bg-slate-50 p-2 rounded-lg border border-slate-100 text-xs">
-                        <div>
-                            <span class="text-[10px] text-slate-500 block">Target Value</span>
-                            <span class="font-bold text-slate-800">${kra.target_value}</span>
-                        </div>
-                        <div>
-                            <span class="text-[10px] text-slate-500 block">Actual Outcome</span>
-                            <input type="number" step="0.01" value="${kra.actual_outcome}" ${disabledAttr}
-                                onchange="updateKraOutcome(${kra.id}, this.value, ${kra.self_rating_percent}, ${kra.manager_rating_percent})"
-                                class="${isFreezed ? 'w-full text-right text-xs p-1 border border-slate-200 rounded bg-slate-100 text-slate-500 cursor-not-allowed' : 'w-full text-right font-bold text-xs p-1 border border-slate-300 rounded bg-white focus:ring-1 focus:ring-sky-500'}">
-                        </div>
-                    </div>
-
-                    <div class="flex items-center justify-between text-[11px] pt-1">
-                        <div>
-                            <span class="text-slate-500">Achievement: </span>
-                            <span class="font-bold ${kra.achievement_percent >= 100 ? 'text-emerald-600' : 'text-amber-600'}">${kra.achievement_percent}%</span>
-                        </div>
-                        <div>
-                            <span class="text-slate-500">Weight: </span>
-                            <span class="font-bold text-slate-700">${kra.weightage_percent}%</span>
-                        </div>
-                        <div>
-                            <span class="text-slate-500">Score: </span>
-                            <span class="font-extrabold text-sky-900">${kra.weighted_contribution}%</span>
-                        </div>
-                    </div>
+    mobileContainer.innerHTML = kras.map(kra => `
+        <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-2">
+            <div class="flex justify-between items-start">
+                <div>
+                    <h4 class="font-bold text-xs text-slate-900">${kra.lever_name}</h4>
+                    <p class="text-[10px] text-slate-500 line-clamp-2">${kra.description || ''}</p>
                 </div>
-            `).join("");
-        }
-    }
-
-    // SECTION 2 - Desktop Table & Mobile Cards
-    const upcomingTbody = document.getElementById("upcomingKraTableBody");
-    const upcomingCardsContainer = document.getElementById("upcomingKraMobileCards");
-
-    if (pms.upcoming_year.kras.length === 0) {
-        const emptyHtml = `<div class="p-4 text-center text-slate-400 italic text-xs">No Section 2 KRAs defined. Click "+ Add Section 2 KRA" above to add.</div>`;
-        if (upcomingTbody) upcomingTbody.innerHTML = `<tr><td colspan="9" class="p-4 text-center text-slate-400 italic">No Section 2 KRAs defined.</td></tr>`;
-        if (upcomingCardsContainer) upcomingCardsContainer.innerHTML = emptyHtml;
-    } else {
-        if (upcomingTbody) {
-            upcomingTbody.innerHTML = pms.upcoming_year.kras.map(kra => `
-                <tr class="hover:bg-slate-50 transition">
-                    <td class="p-3">
-                        <div class="font-bold text-slate-900">${kra.lever_name}</div>
-                        <div class="text-[11px] text-slate-500">${kra.description || ''}</div>
-                    </td>
-                    <td class="p-3 font-medium text-slate-600">${kra.metric_unit}</td>
-                    <td class="p-3 text-right font-semibold text-slate-700">${kra.target_value}</td>
-                    <td class="p-3 text-right">
-                        <input type="number" step="0.01" value="${kra.actual_outcome}" ${disabledAttr}
-                            onchange="updateKraOutcome(${kra.id}, this.value, ${kra.self_rating_percent}, ${kra.manager_rating_percent})"
-                            class="${inputStyleClass}">
-                    </td>
-                    <td class="p-3 text-right font-bold ${kra.achievement_percent >= 100 ? 'text-emerald-600' : 'text-amber-600'}">
-                        ${kra.achievement_percent}%
-                    </td>
-                    <td class="p-3 text-right font-medium text-slate-600">${kra.weightage_percent}%</td>
-                    <td class="p-3 text-right">
-                        <span class="px-2 py-0.5 bg-indigo-50 text-indigo-700 font-bold rounded">${kra.computed_self_rating.toFixed(1)}%</span>
-                    </td>
-                    <td class="p-3 text-right font-extrabold text-indigo-900">${kra.weighted_contribution}%</td>
-                    <td class="p-3 text-center">
-                        ${isFreezed ? `
-                            <span class="text-slate-400 text-xs font-semibold" title="Locked during submission">🔒</span>
-                        ` : `
-                            <button onclick="deleteKra(${kra.id})" class="text-rose-500 hover:text-rose-700 p-1">
-                                <i data-lucide="trash-2" class="w-4 h-4"></i>
-                            </button>
-                        `}
-                    </td>
-                </tr>
-            `).join("");
-        }
-
-        if (upcomingCardsContainer) {
-            upcomingCardsContainer.innerHTML = pms.upcoming_year.kras.map(kra => `
-                <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-xs space-y-2">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <span class="text-[9px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 uppercase">${kra.metric_unit}</span>
-                            <h4 class="text-xs font-bold text-slate-900 mt-1">${kra.lever_name}</h4>
-                            ${kra.description ? `<p class="text-[10px] text-slate-500">${kra.description}</p>` : ''}
-                        </div>
-                        ${isFreezed ? `
-                            <span class="text-slate-400 text-xs font-semibold">🔒</span>
-                        ` : `
-                            <button onclick="deleteKra(${kra.id})" class="text-rose-500 p-1">
-                                <i data-lucide="trash-2" class="w-4 h-4"></i>
-                            </button>
-                        `}
-                    </div>
-
-                    <div class="grid grid-cols-2 gap-2 bg-slate-50 p-2 rounded-lg border border-slate-100 text-xs">
-                        <div>
-                            <span class="text-[10px] text-slate-500 block">Target Value</span>
-                            <span class="font-bold text-slate-800">${kra.target_value}</span>
-                        </div>
-                        <div>
-                            <span class="text-[10px] text-slate-500 block">Actual Outcome</span>
-                            <input type="number" step="0.01" value="${kra.actual_outcome}" ${disabledAttr}
-                                onchange="updateKraOutcome(${kra.id}, this.value, ${kra.self_rating_percent}, ${kra.manager_rating_percent})"
-                                class="${isFreezed ? 'w-full text-right text-xs p-1 border border-slate-200 rounded bg-slate-100 text-slate-500 cursor-not-allowed' : 'w-full text-right font-bold text-xs p-1 border border-slate-300 rounded bg-white focus:ring-1 focus:ring-indigo-500'}">
-                        </div>
-                    </div>
-
-                    <div class="flex items-center justify-between text-[11px] pt-1">
-                        <div>
-                            <span class="text-slate-500">Progress: </span>
-                            <span class="font-bold ${kra.achievement_percent >= 100 ? 'text-emerald-600' : 'text-amber-600'}">${kra.achievement_percent}%</span>
-                        </div>
-                        <div>
-                            <span class="text-slate-500">Weight: </span>
-                            <span class="font-bold text-slate-700">${kra.weightage_percent}%</span>
-                        </div>
-                        <div>
-                            <span class="text-slate-500">Score: </span>
-                            <span class="font-extrabold text-indigo-900">${kra.weighted_contribution}%</span>
-                        </div>
-                    </div>
+                <span class="px-2 py-0.5 bg-sky-100 text-sky-800 text-[10px] font-bold rounded-full">${kra.weightage_percent}% Weight</span>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-2 text-[10px]">
+                <div class="bg-white p-1.5 rounded border border-slate-200">
+                    <span class="text-slate-400 block">Target Value:</span>
+                    <span class="font-bold text-slate-800">${kra.target_value} ${kra.metric_unit}</span>
                 </div>
-            `).join("");
-        }
-    }
+                <div class="bg-white p-1.5 rounded border border-slate-200">
+                    <span class="text-slate-400 block">Actual Outcome:</span>
+                    ${!isFreezed && isViewingSelf ? `
+                        <input type="number" step="0.1" value="${kra.actual_outcome}" 
+                            onchange="updateKraOutcome(${kra.id}, this.value, ${kra.self_rating_percent}, ${kra.manager_rating_percent})"
+                            class="w-full text-xs p-1 bg-slate-50 font-bold border border-slate-300 rounded focus:ring-1 focus:ring-sky-500 focus:outline-none">
+                    ` : `<span class="font-bold text-slate-900">${kra.actual_outcome} ${kra.metric_unit}</span>`}
+                </div>
+            </div>
+
+            <div class="flex justify-between items-center pt-1 border-t border-slate-200 text-[10px]">
+                <div>
+                    <span class="text-slate-500">Achieved: </span>
+                    <span class="font-bold ${kra.achievement_percent >= 100 ? 'text-emerald-600' : 'text-slate-800'}">${kra.achievement_percent}%</span>
+                </div>
+                <div>
+                    <span class="text-slate-500">Contribution: </span>
+                    <span class="font-black text-sky-700">${kra.weighted_contribution}%</span>
+                </div>
+                ${!isFreezed && isViewingSelf ? `
+                    <button onclick="deleteKra(${kra.id})" class="p-1 text-rose-500 hover:text-rose-700">
+                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                    </button>
+                ` : ''}
+            </div>
+        </div>
+    `).join("");
+
+    desktopContainer.innerHTML = kras.map(kra => `
+        <tr class="hover:bg-slate-50/80 transition">
+            <td class="p-3">
+                <div class="font-bold text-slate-900 text-xs">${kra.lever_name}</div>
+                <div class="text-[11px] text-slate-500">${kra.description || ''}</div>
+            </td>
+            <td class="p-3 font-medium text-slate-600">${kra.metric_unit}</td>
+            <td class="p-3 font-semibold text-slate-800">${kra.target_value}</td>
+            <td class="p-3 font-bold text-slate-900">
+                ${!isFreezed && isViewingSelf ? `
+                    <input type="number" step="0.1" value="${kra.actual_outcome}" 
+                        onchange="updateKraOutcome(${kra.id}, this.value, ${kra.self_rating_percent}, ${kra.manager_rating_percent})"
+                        class="w-20 text-xs p-1.5 bg-slate-50 font-bold border border-slate-300 rounded focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                ` : `<span class="font-bold text-slate-900">${kra.actual_outcome}</span>`}
+            </td>
+            <td class="p-3 font-extrabold text-sky-700">${kra.weightage_percent}%</td>
+            <td class="p-3 font-bold ${kra.achievement_percent >= 100 ? 'text-emerald-600' : 'text-slate-800'}">${kra.achievement_percent}%</td>
+            <td class="p-3 text-right">
+                <div class="flex items-center justify-end space-x-2">
+                    <span class="font-black text-xs text-sky-900 bg-sky-50 border border-sky-200 px-2 py-0.5 rounded-md">${kra.weighted_contribution}%</span>
+                    ${!isFreezed && isViewingSelf ? `
+                        <button onclick="deleteKra(${kra.id})" class="p-1 text-slate-400 hover:text-rose-600 transition" title="Delete KRA">
+                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        </button>
+                    ` : ''}
+                </div>
+            </td>
+        </tr>
+    `).join("");
 }
 
 async function handleUpdateSectionWeightages(e) {
@@ -820,7 +729,7 @@ async function handleUpdateSectionWeightages(e) {
         if (res.ok) {
             alert(result.message);
             await fetchSettings();
-            await loadUserDashboard(currentUserId);
+            await loadUserDashboard(viewingUserId);
         } else {
             alert("Error: " + result.detail);
         }
@@ -844,7 +753,7 @@ async function updateKraOutcome(kraId, outcome, selfRating, mgrRating) {
                 manager_rating_percent: parseFloat(mgrRating) || 0
             })
         });
-        await loadUserDashboard(currentUserId);
+        await loadUserDashboard(viewingUserId);
     } catch (err) {
         console.error("Error updating KRA outcome:", err);
     }
@@ -854,7 +763,7 @@ async function deleteKra(kraId) {
     if (!confirm("Are you sure you want to delete this KRA lever?")) return;
     try {
         await fetch(`/api/kras/${kraId}`, { method: "DELETE" });
-        await loadUserDashboard(currentUserId);
+        await loadUserDashboard(viewingUserId);
     } catch (err) {
         console.error("Error deleting KRA:", err);
     }
@@ -898,7 +807,7 @@ function renderTreeNode(node, level = 0) {
 
     return `
         <div class="${indentClass} my-1.5">
-            <div class="bg-white p-2 sm:p-3 rounded-xl border border-slate-200 hover:border-sky-400 shadow-xs flex flex-row items-center justify-between gap-1 transition cursor-pointer" onclick="switchActiveUser(${node.id})">
+            <div class="bg-white p-2 sm:p-3 rounded-xl border border-slate-200 hover:border-sky-400 shadow-xs flex flex-row items-center justify-between gap-1 transition cursor-pointer" onclick="reviewReportKRA(${node.id})">
                 <div class="flex items-center space-x-2 min-w-0">
                     <div class="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-slate-900 text-white font-bold text-[9px] sm:text-xs flex items-center justify-center flex-shrink-0">
                         ${node.name.split(' ').map(n=>n[0]).join('')}
@@ -918,7 +827,7 @@ function renderTreeNode(node, level = 0) {
                         <div class="text-[8px] sm:text-[10px] font-bold text-emerald-600">Grade ${node.grade}</div>
                     </div>
                     <button class="px-1.5 py-0.5 bg-slate-100 hover:bg-sky-50 text-slate-600 text-[10px] font-semibold rounded border transition">
-                        View
+                        View KRA
                     </button>
                 </div>
             </div>
@@ -933,7 +842,7 @@ function renderTeamMembersTable() {
     const reports = currentPmsData.direct_reports || [];
 
     if (reports.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-slate-400 italic text-xs">No direct reports or pending submissions under current persona. Switch persona to Manager (Suraj Pant), GM, or MD (Rajesh Sarada).</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-slate-400 italic text-xs">No direct reports or pending submissions under current persona. Switch persona using top dropdown selector.</td></tr>`;
         return;
     }
 
@@ -959,7 +868,7 @@ function renderTeamMembersTable() {
                     <span class="px-2 py-0.5 text-[10px] font-bold rounded bg-emerald-100 text-emerald-800">Grade ${r.grade}</span>
                 </td>
                 <td class="p-2.5 text-center">
-                    <button onclick="switchActiveUser(${r.id})" class="px-3 py-1 bg-sky-600 hover:bg-sky-700 text-white font-semibold text-[11px] rounded-lg transition shadow-xs inline-flex items-center gap-1">
+                    <button onclick="reviewReportKRA(${r.id})" class="px-3 py-1 bg-sky-600 hover:bg-sky-700 text-white font-semibold text-[11px] rounded-lg transition shadow-xs inline-flex items-center gap-1">
                         <i data-lucide="eye" class="w-3.5 h-3.5"></i> Review KRA Sheet
                     </button>
                 </td>
@@ -1012,7 +921,7 @@ async function handleSaveKRA(e) {
     e.preventDefault();
     const section = document.getElementById("kraSectionInput").value;
     const kraData = {
-        user_id: currentUserId,
+        user_id: viewingUserId,
         year: 2026,
         section: section,
         lever_name: document.getElementById("kraLeverName").value,
@@ -1031,7 +940,7 @@ async function handleSaveKRA(e) {
         });
         closeAddKRAModal();
         document.getElementById("kraForm").reset();
-        await loadUserDashboard(currentUserId);
+        await loadUserDashboard(viewingUserId);
     } catch (err) {
         console.error("Error saving KRA:", err);
     }
@@ -1088,7 +997,7 @@ async function submitAppraisalForm(status) {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                user_id: currentUserId,
+                user_id: viewingUserId,
                 year: 2026,
                 status: status,
                 self_comments: document.getElementById("selfCommentsInput").value,
@@ -1099,7 +1008,7 @@ async function submitAppraisalForm(status) {
         const result = await res.json();
         if (res.ok) {
             alert(`Appraisal status updated to ${status}!`);
-            await loadUserDashboard(currentUserId);
+            await loadUserDashboard(viewingUserId);
         } else {
             alert("Submission Error: " + result.detail);
         }
