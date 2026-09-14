@@ -122,6 +122,44 @@ async function handleSaveRoleWeightage(role) {
     }
 }
 
+async function handleLoginSubmit(e) {
+    e.preventDefault();
+    const uname = document.getElementById("loginUsername").value;
+    const pwd = document.getElementById("loginPassword").value;
+    const errBox = document.getElementById("loginErrorMsg");
+
+    try {
+        const res = await fetch("/api/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username: uname, password: pwd })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            localStorage.setItem("pms_session_user", JSON.stringify(data.user));
+            localStorage.setItem("pms_session_token", data.token);
+            if (errBox) errBox.classList.add("hidden");
+            document.getElementById("loginModal").classList.add("hidden");
+            await initApp();
+        } else {
+            if (errBox) {
+                document.getElementById("loginErrorText").innerText = data.detail || "Invalid login credentials";
+                errBox.classList.remove("hidden");
+            }
+        }
+    } catch (err) {
+        console.error("Login error:", err);
+    }
+}
+
+function handleLogout() {
+    localStorage.removeItem("pms_session_user");
+    localStorage.removeItem("pms_session_token");
+    loggedInUserId = null;
+    viewingUserId = null;
+    document.getElementById("loginModal").classList.remove("hidden");
+}
+
 async function fetchUsers() {
     try {
         const res = await fetch("/api/users");
@@ -131,9 +169,46 @@ async function fetchUsers() {
         populateAdminPersonaDropdown();
         renderAllUsersPersonaTable();
 
-        if (!loggedInUserId && allUsers.length > 0) {
-            const mdUser = allUsers.find(u => u.role === "MD") || allUsers[0];
-            loggedInUserId = mdUser.id;
+        const storedUser = localStorage.getItem("pms_session_user");
+        if (!storedUser) {
+            document.getElementById("loginModal").classList.remove("hidden");
+            return;
+        }
+
+        let sessionUser;
+        try {
+            sessionUser = JSON.parse(storedUser);
+            const freshUser = allUsers.find(u => u.id === sessionUser.id);
+            if (freshUser) sessionUser = freshUser;
+            loggedInUserId = sessionUser.id;
+            document.getElementById("loginModal").classList.add("hidden");
+        } catch (e) {
+            handleLogout();
+            return;
+        }
+
+        // Header User Badge & Logout
+        const headerName = document.getElementById("headerUserName");
+        if (headerName) headerName.innerText = `${sessionUser.name} [${sessionUser.role}]`;
+
+        // Persona Switcher Visibility (Only Managers/Admins/MD can switch personas)
+        const isManagerOrAdmin = ["ADMIN", "MD", "GM", "HOD", "MANAGER", "SUPERVISOR"].includes(sessionUser.role);
+        const selectorBox = document.getElementById("personaSelectorBox");
+        if (selectorBox) {
+            if (isManagerOrAdmin) {
+                selectorBox.classList.remove("hidden");
+                selectorBox.classList.add("flex");
+            } else {
+                selectorBox.classList.add("hidden");
+                selectorBox.classList.remove("flex");
+            }
+        }
+
+        // Admin Tab Access Control
+        const adminTabBtn = document.getElementById("tabBtnAdmin");
+        if (adminTabBtn) {
+            const canAccessAdmin = sessionUser.role === "ADMIN" || sessionUser.role === "MD";
+            adminTabBtn.style.display = canAccessAdmin ? "flex" : "none";
         }
 
         if (!viewingUserId) {
@@ -992,14 +1067,48 @@ async function handleCreateUser(e) {
         });
         const result = await res.json();
         if (res.ok) {
-            alert(result.message);
             document.getElementById("addUserForm").reset();
             await fetchUsers();
+
+            if (result.generated_username && result.generated_password) {
+                document.getElementById("displayGenUsername").innerText = result.generated_username;
+                document.getElementById("displayGenPassword").innerText = result.generated_password;
+                const modal = document.getElementById("generatedCredentialsModal");
+                if (modal) {
+                    modal.classList.remove("hidden");
+                    modal.classList.add("flex");
+                }
+            } else {
+                alert(result.message);
+            }
         } else {
             alert("Error: " + result.detail);
         }
     } catch (err) {
         console.error("Error creating user:", err);
+    }
+}
+
+function closeCredentialsModal() {
+    const modal = document.getElementById("generatedCredentialsModal");
+    if (modal) {
+        modal.classList.add("hidden");
+        modal.classList.remove("flex");
+    }
+}
+
+function copyGeneratedCredentials() {
+    const u = document.getElementById("displayGenUsername").innerText;
+    const p = document.getElementById("displayGenPassword").innerText;
+    const textToCopy = `PMS Credentials\nUsername: ${u}\nTemporary Password: ${p}`;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(textToCopy).then(() => {
+            alert("Credentials copied to clipboard!");
+        }).catch(() => {
+            alert(`Credentials:\nUsername: ${u}\nPassword: ${p}`);
+        });
+    } else {
+        alert(`Credentials:\nUsername: ${u}\nPassword: ${p}`);
     }
 }
 

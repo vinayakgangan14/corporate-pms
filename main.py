@@ -22,7 +22,10 @@ from database import (
     get_user_effective_weightages, 
     update_user_custom_weightages,
     is_postgres,
-    get_db_status
+    get_db_status,
+    hash_password,
+    verify_password,
+    generate_username
 )
 from models import UserRole, KRASection, AppraisalStatus
 from pms_engine import (
@@ -31,6 +34,7 @@ from pms_engine import (
     get_downchain_report_ids,
     determine_performance_band
 )
+import secrets
 
 app = FastAPI(
     title="Corporate Performance Management System (PMS)",
@@ -58,6 +62,10 @@ def startup_db():
 
 # --- Pydantic Data Validation Schemas ---
 
+class LoginSchema(BaseModel):
+    username: str
+    password: str
+
 class CreateUserSchema(BaseModel):
     name: str
     email: str
@@ -65,6 +73,7 @@ class CreateUserSchema(BaseModel):
     designation: str
     department_id: Optional[int] = 1
     manager_id: Optional[int] = None
+    username: Optional[str] = None
 
 class CreateKRASchema(BaseModel):
     user_id: int
@@ -119,6 +128,41 @@ def read_root():
             }
             return HTMLResponse(content=f.read(), headers=headers)
     return HTMLResponse("<h2>PMS Server Running. Static UI loading...</h2>")
+
+@app.post("/api/login")
+def login_user(payload: LoginSchema):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    clean_username = payload.username.strip().lower()
+    
+    if is_postgres():
+        cursor.execute("SELECT id, name, email, username, password_hash, role, designation FROM users WHERE LOWER(username) = %s OR LOWER(email) = %s", (clean_username, clean_username))
+        user_row = cursor.fetchone()
+    else:
+        cursor.execute("SELECT id, name, email, username, password_hash, role, designation FROM users WHERE LOWER(username) = ? OR LOWER(email) = ?", (clean_username, clean_username))
+        user_row = cursor.fetchone()
+        
+    conn.close()
+    
+    if not user_row:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+        
+    user_dict = dict(user_row) if is_postgres() else {
+        "id": user_row[0], "name": user_row[1], "email": user_row[2],
+        "username": user_row[3], "password_hash": user_row[4],
+        "role": user_row[5], "designation": user_row[6]
+    }
+    
+    stored_hash = user_dict.pop("password_hash", "")
+    if not verify_password(payload.password, stored_hash):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+        
+    session_token = f"pms_session_{user_dict['id']}_{secrets.token_hex(8)}"
+    return {
+        "status": "success",
+        "token": session_token,
+        "user": user_dict
+    }
 
 @app.get("/api/db-status")
 def get_database_status():
@@ -191,7 +235,7 @@ def list_users():
     
     if is_postgres():
         cursor.execute("""
-            SELECT u.id, u.name, u.email, u.role, u.designation, u.manager_id, u.sec1_weight, u.sec2_weight,
+            SELECT u.id, u.name, u.email, u.username, u.role, u.designation, u.manager_id, u.sec1_weight, u.sec2_weight,
                    m.name as manager_name, m.role as manager_role,
                    d.name as department_name
             FROM users u
@@ -210,7 +254,7 @@ def list_users():
         all_kras = [dict(row) for row in cursor.fetchall()]
     else:
         cursor.execute("""
-            SELECT u.id, u.name, u.email, u.role, u.designation, u.manager_id, u.sec1_weight, u.sec2_weight,
+            SELECT u.id, u.name, u.email, u.username, u.role, u.designation, u.manager_id, u.sec1_weight, u.sec2_weight,
                    m.name as manager_name, m.role as manager_role,
                    d.name as department_name
             FROM users u
@@ -256,25 +300,36 @@ def list_users():
 def create_user(user: CreateUserSchema):
     conn = get_db_connection()
     cursor = conn.cursor()
+    
+    gen_username = user.username if user.username else generate_username(user.name, user.email)
+    raw_password = f"Pms@{secrets.token_hex(3)}!"
+    pwd_hash = hash_password(raw_password)
+
     try:
         if is_postgres():
             cursor.execute(
-                """INSERT INTO users (name, email, role, designation, department_id, manager_id)
-                   VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
-                (user.name, user.email, user.role, user.designation, user.department_id, user.manager_id)
+                """INSERT INTO users (name, email, username, password_hash, role, designation, department_id, manager_id)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                (user.name, user.email, gen_username, pwd_hash, user.role, user.designation, user.department_id, user.manager_id)
             )
             user_id = cursor.fetchone()['id']
         else:
             cursor.execute(
-                """INSERT INTO users (name, email, role, designation, department_id, manager_id)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (user.name, user.email, user.role, user.designation, user.department_id, user.manager_id)
+                """INSERT INTO users (name, email, username, password_hash, role, designation, department_id, manager_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (user.name, user.email, gen_username, pwd_hash, user.role, user.designation, user.department_id, user.manager_id)
             )
             user_id = cursor.lastrowid
             
         conn.commit()
         conn.close()
-        return {"status": "success", "user_id": user_id, "message": f"User '{user.name}' created successfully as {user.role}"}
+        return {
+            "status": "success", 
+            "user_id": user_id, 
+            "generated_username": gen_username,
+            "generated_password": raw_password,
+            "message": f"User '{user.name}' created successfully as {user.role}"
+        }
     except Exception as e:
         conn.close()
         raise HTTPException(status_code=400, detail=f"User creation failed: {e}")

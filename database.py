@@ -6,6 +6,8 @@ Supports Administrator Configurable Section Weightages & Settings.
 
 import os
 import sqlite3
+import hashlib
+import secrets
 from typing import Optional, List, Dict, Any
 from models import CREATE_TABLES_SQL_SQLITE, CREATE_TABLES_SQL_PG
 
@@ -24,6 +26,49 @@ def get_db_status():
         "last_error": _last_postgres_error,
         "active_engine": "PostgreSQL (Supabase)" if _active_driver_is_postgres else "SQLite"
     }
+
+def hash_password(password: str, salt: str = None) -> str:
+    """Hashes a password with PBKDF2-HMAC-SHA256."""
+    if not password:
+        password = "password123"
+    if not salt:
+        salt = secrets.token_hex(16)
+    key = hashlib.pbkdf2_hmac(
+        'sha256',
+        password.encode('utf-8'),
+        salt.encode('utf-8'),
+        100000
+    )
+    return f"{salt}${key.hex()}"
+
+def verify_password(password: str, password_hash: str) -> bool:
+    """Verifies a password against a stored PBKDF2 hash."""
+    if not password or not password_hash:
+        return False
+    if '$' not in password_hash:
+        return password == password_hash
+    try:
+        salt, stored_key = password_hash.split('$', 1)
+        computed_key = hashlib.pbkdf2_hmac(
+            'sha256',
+            password.encode('utf-8'),
+            salt.encode('utf-8'),
+            100000
+        ).hex()
+        return secrets.compare_digest(stored_key, computed_key)
+    except Exception:
+        return False
+
+def generate_username(name: str, email: str) -> str:
+    """Generates a clean, unique username from name or email."""
+    if email and "@" in email:
+        base = email.split("@")[0].lower()
+    elif name:
+        base = name.lower().replace(" ", ".")
+    else:
+        base = "user"
+    cleaned = "".join(c for c in base if c.isalnum() or c in "._-")
+    return cleaned or "user"
 
 def get_db_connection():
     global _active_driver_is_postgres, _last_postgres_error
@@ -67,6 +112,8 @@ def init_db():
             conn.commit()
             # Migration checks for postgres
             try:
+                cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(100) UNIQUE;")
+                cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);")
                 cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS sec1_weight DOUBLE PRECISION;")
                 cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS sec2_weight DOUBLE PRECISION;")
                 conn.commit()
@@ -87,6 +134,14 @@ def init_db():
             conn.commit()
             # Migration checks for SQLite
             try:
+                cursor.execute("ALTER TABLE users ADD COLUMN username TEXT;")
+            except Exception:
+                pass
+            try:
+                cursor.execute("ALTER TABLE users ADD COLUMN password_hash TEXT;")
+            except Exception:
+                pass
+            try:
                 cursor.execute("ALTER TABLE users ADD COLUMN sec1_weight REAL;")
             except Exception:
                 pass
@@ -100,8 +155,45 @@ def init_db():
         init_default_settings()
         init_default_role_settings()
         seed_data_if_empty()
+        ensure_user_credentials()
     except Exception as e:
         print(f"[DATABASE WARNING] Exception during init_db: {e}")
+
+def ensure_user_credentials():
+    """Migrates and ensures all existing users have usernames and password hashes."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("SELECT id, name, email, username, password_hash FROM users")
+        rows = cursor.fetchall()
+        
+        for r in rows:
+            if is_postgres():
+                u_id, u_name, u_email, u_uname, u_pass = r['id'], r['name'], r['email'], r['username'], r['password_hash']
+            else:
+                u_id, u_name, u_email, u_uname, u_pass = r[0], r[1], r[2], r[3], r[4]
+                
+            new_uname = u_uname if u_uname else generate_username(u_name, u_email)
+            new_pass = u_pass if u_pass else hash_password("pms123")
+            
+            if not u_uname or not u_pass:
+                if is_postgres():
+                    cursor.execute(
+                        "UPDATE users SET username = %s, password_hash = %s WHERE id = %s",
+                        (new_uname, new_pass, u_id)
+                    )
+                else:
+                    cursor.execute(
+                        "UPDATE users SET username = ?, password_hash = ? WHERE id = ?",
+                        (new_uname, new_pass, u_id)
+                    )
+        conn.commit()
+    except Exception as me:
+        conn.rollback()
+        print(f"[DATABASE NOTICE] Credentials migration notice: {me}")
+    finally:
+        conn.close()
 
 def init_default_settings():
     conn = get_db_connection()
@@ -140,13 +232,13 @@ def init_default_role_settings():
     if is_postgres():
         for r, w1, w2 in role_defaults:
             cursor.execute(
-                "INSERT INTO role_settings (role, section1_weight, section2_weight) VALUES (%s, %s, %s) ON CONFLICT (role) DO NOTHING",
+                "INSERT INTO role_settings (role, section1_weight, section2_weight) VALUES (%s, %s, %s) ON CONFLICT (role) DO UPDATE SET section1_weight = EXCLUDED.section1_weight, section2_weight = EXCLUDED.section2_weight",
                 (r, w1, w2)
             )
     else:
         for r, w1, w2 in role_defaults:
             cursor.execute(
-                "INSERT OR IGNORE INTO role_settings (role, section1_weight, section2_weight) VALUES (?, ?, ?)",
+                "INSERT INTO role_settings (role, section1_weight, section2_weight) VALUES (?, ?, ?) ON CONFLICT(role) DO UPDATE SET section1_weight = excluded.section1_weight, section2_weight = excluded.section2_weight",
                 (r, w1, w2)
             )
             
