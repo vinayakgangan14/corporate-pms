@@ -153,14 +153,18 @@ def init_default_role_settings():
     conn.commit()
     conn.close()
 
-def get_role_settings() -> dict:
+def get_role_settings(conn=None) -> dict:
     """Returns mapping of all roles to their configured section weightages."""
-    conn = get_db_connection()
+    should_close = False
+    if conn is None:
+        conn = get_db_connection()
+        should_close = True
     cursor = conn.cursor()
     
     cursor.execute("SELECT role, section1_weight, section2_weight FROM role_settings")
     rows = cursor.fetchall()
-    conn.close()
+    if should_close:
+        conn.close()
     
     results = {}
     for r in rows:
@@ -214,29 +218,44 @@ def update_role_setting(role_name: str, sec1: float, sec2: float):
     conn.commit()
     conn.close()
 
-def get_user_effective_weightages(user_id: int) -> dict:
+def get_user_effective_weightages(user_id: int, conn=None, role_settings=None, user_row=None) -> dict:
     """
     Fetches the effective Section 1 and Section 2 weightages for a given user.
     Prioritizes individual user overrides (sec1_weight, sec2_weight), then position/role default, then 70/30 system fallback.
+    Accepts optional pre-fetched conn, role_settings, or user_row for zero N+1 database connection overhead.
     """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    if is_postgres():
-        cursor.execute("SELECT role, sec1_weight, sec2_weight FROM users WHERE id = %s", (user_id,))
-        row = cursor.fetchone()
+    if user_row is not None:
+        if isinstance(user_row, dict):
+            role = user_row.get('role', 'EMPLOYEE')
+            sec1_override = user_row.get('sec1_weight')
+            sec2_override = user_row.get('sec2_weight')
+        else:
+            role = user_row['role'] if is_postgres() else user_row[3]
+            sec1_override = user_row['sec1_weight'] if is_postgres() else user_row[6]
+            sec2_override = user_row['sec2_weight'] if is_postgres() else user_row[7]
     else:
-        cursor.execute("SELECT role, sec1_weight, sec2_weight FROM users WHERE id = ?", (user_id,))
-        row = cursor.fetchone()
+        should_close = False
+        if conn is None:
+            conn = get_db_connection()
+            should_close = True
+        cursor = conn.cursor()
         
-    conn.close()
-    
-    if not row:
-        return {"section1_weight": 70.0, "section2_weight": 30.0, "source": "default", "role": "EMPLOYEE"}
-        
-    role = row['role'] if is_postgres() else row[0]
-    sec1_override = row['sec1_weight'] if is_postgres() else row[1]
-    sec2_override = row['sec2_weight'] if is_postgres() else row[2]
+        if is_postgres():
+            cursor.execute("SELECT role, sec1_weight, sec2_weight FROM users WHERE id = %s", (user_id,))
+            row = cursor.fetchone()
+        else:
+            cursor.execute("SELECT role, sec1_weight, sec2_weight FROM users WHERE id = ?", (user_id,))
+            row = cursor.fetchone()
+            
+        if should_close:
+            conn.close()
+            
+        if not row:
+            return {"section1_weight": 70.0, "section2_weight": 30.0, "source": "default", "role": "EMPLOYEE"}
+            
+        role = row['role'] if is_postgres() else row[0]
+        sec1_override = row['sec1_weight'] if is_postgres() else row[1]
+        sec2_override = row['sec2_weight'] if is_postgres() else row[2]
     
     if sec1_override is not None and sec2_override is not None:
         return {
@@ -246,7 +265,9 @@ def get_user_effective_weightages(user_id: int) -> dict:
             "role": role
         }
         
-    role_settings = get_role_settings()
+    if role_settings is None:
+        role_settings = get_role_settings(conn=conn if 'conn' in locals() and conn else None)
+        
     role_weight = role_settings.get(role, {"section1_weight": 70.0, "section2_weight": 30.0})
     
     return {
@@ -269,13 +290,17 @@ def update_user_custom_weightages(user_id: int, sec1: Optional[float], sec2: Opt
     conn.commit()
     conn.close()
 
-def get_system_settings():
-    conn = get_db_connection()
+def get_system_settings(conn=None):
+    should_close = False
+    if conn is None:
+        conn = get_db_connection()
+        should_close = True
     cursor = conn.cursor()
     
     cursor.execute("SELECT key, value FROM system_settings")
     rows = cursor.fetchall()
-    conn.close()
+    if should_close:
+        conn.close()
     
     settings = {"section1_weightage": 70.0, "section2_weightage": 30.0}
     for row in rows:

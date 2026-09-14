@@ -200,6 +200,14 @@ def list_users():
             ORDER BY u.id ASC
         """)
         users = [dict(row) for row in cursor.fetchall()]
+
+        cursor.execute("""
+            SELECT user_id, id, lever_name, description, metric_unit, target_value, actual_outcome, 
+                   weightage_percent, section, parent_kra_id, self_rating_percent, manager_rating_percent 
+            FROM kras 
+            WHERE year = 2026
+        """)
+        all_kras = [dict(row) for row in cursor.fetchall()]
     else:
         cursor.execute("""
             SELECT u.id, u.name, u.email, u.role, u.designation, u.manager_id, u.sec1_weight, u.sec2_weight,
@@ -211,16 +219,33 @@ def list_users():
             ORDER BY u.id ASC
         """)
         users = [dict(row) for row in cursor.fetchall()]
+
+        cursor.execute("""
+            SELECT user_id, id, lever_name, description, metric_unit, target_value, actual_outcome, 
+                   weightage_percent, section, parent_kra_id, self_rating_percent, manager_rating_percent 
+            FROM kras 
+            WHERE year = 2026
+        """)
+        all_kras = [dict(row) for row in cursor.fetchall()]
         
+    role_settings = get_role_settings(conn=conn)
     conn.close()
 
+    kras_by_user = {}
+    for k in all_kras:
+        kras_by_user.setdefault(k["user_id"], []).append(k)
+
     for u in users:
-        eff_weight = get_user_effective_weightages(u["id"])
+        uid = u["id"]
+        eff_weight = get_user_effective_weightages(uid, conn=None, role_settings=role_settings, user_row=u)
         u["effective_section1_weight"] = eff_weight["section1_weight"]
         u["effective_section2_weight"] = eff_weight["section2_weight"]
         u["weightage_source"] = eff_weight["source"]
         
-        score_data = compute_user_pms_score(u["id"])
+        score_data = compute_user_pms_score(
+            uid, year=2026, conn=None, user_row=u, 
+            role_settings=role_settings, kras_list=kras_by_user.get(uid, [])
+        )
         u["composite_score"] = score_data["composite_score"]
         u["performance_band"] = score_data["performance_band"]
         u["grade"] = score_data["grade"]
@@ -538,20 +563,44 @@ def get_executive_analytics():
     if is_postgres():
         cursor.execute("SELECT COUNT(*) FROM users WHERE role != 'ADMIN'")
         total_employees = cursor.fetchone()['count']
-        cursor.execute("SELECT id, name, role FROM users WHERE role != 'ADMIN'")
-        users = cursor.fetchall()
+        cursor.execute("SELECT id, name, role, sec1_weight, sec2_weight FROM users WHERE role != 'ADMIN'")
+        users = [dict(row) for row in cursor.fetchall()]
+        cursor.execute("""
+            SELECT user_id, id, lever_name, description, metric_unit, target_value, actual_outcome, 
+                   weightage_percent, section, parent_kra_id, self_rating_percent, manager_rating_percent 
+            FROM kras 
+            WHERE year = 2026
+        """)
+        all_kras = [dict(row) for row in cursor.fetchall()]
     else:
         cursor.execute("SELECT COUNT(*) FROM users WHERE role != 'ADMIN'")
         total_employees = cursor.fetchone()[0]
-        cursor.execute("SELECT id, name, role FROM users WHERE role != 'ADMIN'")
-        users = cursor.fetchall()
+        cursor.execute("SELECT id, name, role, sec1_weight, sec2_weight FROM users WHERE role != 'ADMIN'")
+        users = [dict(row) for row in cursor.fetchall()]
+        cursor.execute("""
+            SELECT user_id, id, lever_name, description, metric_unit, target_value, actual_outcome, 
+                   weightage_percent, section, parent_kra_id, self_rating_percent, manager_rating_percent 
+            FROM kras 
+            WHERE year = 2026
+        """)
+        all_kras = [dict(row) for row in cursor.fetchall()]
     
+    role_settings = get_role_settings(conn=conn)
+    conn.close()
+
+    kras_by_user = {}
+    for k in all_kras:
+        kras_by_user.setdefault(k["user_id"], []).append(k)
+
     scores = []
     bands = {"Outstanding / Exceptional": 0, "Exceeds Expectations": 0, "Meets Expectations": 0, "Needs Improvement": 0, "Unsatisfactory": 0}
     
     for u in users:
-        uid = u['id'] if is_postgres() else u[0]
-        score_data = compute_user_pms_score(uid)
+        uid = u['id']
+        score_data = compute_user_pms_score(
+            uid, year=2026, conn=None, user_row=u, 
+            role_settings=role_settings, kras_list=kras_by_user.get(uid, [])
+        )
         score = score_data["composite_score"]
         band = score_data["performance_band"]
         scores.append(score)
@@ -560,7 +609,6 @@ def get_executive_analytics():
             
     avg_score = round(sum(scores) / len(scores), 2) if scores else 0.0
     
-    conn.close()
     return {
         "total_employees": total_employees,
         "company_average_pms_score": avg_score,

@@ -27,38 +27,46 @@ def determine_performance_band(composite_score: float) -> tuple[str, str]:
     else:
         return ("Unsatisfactory", "D")
 
-def compute_user_pms_score(user_id: int, year: int = 2026) -> Dict[str, Any]:
+def compute_user_pms_score(user_id: int, year: int = 2026, conn=None, user_row=None, role_settings=None, kras_list=None) -> Dict[str, Any]:
     """
     Computes weighted section scores dynamically using position-based (MD 70/30, GM 50/50, etc.) or user-configured section weightages.
     Strictly validates that Section 1 KRA weightages sum to 100% and Section 2 KRA weightages sum to 100%.
+    Optimized to accept optional pre-fetched conn, user_row, role_settings, and kras_list for zero-latency batch processing.
     """
-    user_weightages = get_user_effective_weightages(user_id)
+    user_weightages = get_user_effective_weightages(user_id, conn=conn, role_settings=role_settings, user_row=user_row)
     sec1_weightage_pct = user_weightages["section1_weight"]
     sec2_weightage_pct = user_weightages["section2_weight"]
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    if is_postgres():
-        cursor.execute(
-            """SELECT id, lever_name, description, metric_unit, target_value, actual_outcome, 
-                      weightage_percent, section, parent_kra_id, self_rating_percent, manager_rating_percent 
-               FROM kras 
-               WHERE user_id = %s AND year = %s""",
-            (user_id, year)
-        )
-        kras = [dict(row) for row in cursor.fetchall()]
+    if kras_list is not None:
+        kras = [dict(k) for k in kras_list]
     else:
-        cursor.execute(
-            """SELECT id, lever_name, description, metric_unit, target_value, actual_outcome, 
-                      weightage_percent, section, parent_kra_id, self_rating_percent, manager_rating_percent 
-               FROM kras 
-               WHERE user_id = ? AND year = ?""",
-            (user_id, year)
-        )
-        kras = [dict(row) for row in cursor.fetchall()]
+        should_close = False
+        if conn is None:
+            conn = get_db_connection()
+            should_close = True
+        cursor = conn.cursor()
         
-    conn.close()
+        if is_postgres():
+            cursor.execute(
+                """SELECT id, lever_name, description, metric_unit, target_value, actual_outcome, 
+                          weightage_percent, section, parent_kra_id, self_rating_percent, manager_rating_percent 
+                   FROM kras 
+                   WHERE user_id = %s AND year = %s""",
+                (user_id, year)
+            )
+            kras = [dict(row) for row in cursor.fetchall()]
+        else:
+            cursor.execute(
+                """SELECT id, lever_name, description, metric_unit, target_value, actual_outcome, 
+                          weightage_percent, section, parent_kra_id, self_rating_percent, manager_rating_percent 
+                   FROM kras 
+                   WHERE user_id = ? AND year = ?""",
+                (user_id, year)
+            )
+            kras = [dict(row) for row in cursor.fetchall()]
+            
+        if should_close:
+            conn.close()
 
     present_year_kras = []
     upcoming_year_kras = []
@@ -148,7 +156,7 @@ def get_org_hierarchy_tree(root_user_id: Optional[int] = None) -> List[Dict[str,
     cursor = conn.cursor()
     
     cursor.execute("""
-        SELECT u.id, u.name, u.email, u.role, u.designation, u.manager_id, d.name as department_name, d.code as department_code
+        SELECT u.id, u.name, u.email, u.role, u.designation, u.manager_id, u.sec1_weight, u.sec2_weight, d.name as department_name, d.code as department_code
         FROM users u
         LEFT JOIN departments d ON u.department_id = d.id
         ORDER BY 
@@ -162,15 +170,40 @@ def get_org_hierarchy_tree(root_user_id: Optional[int] = None) -> List[Dict[str,
                 ELSE 7
             END
     """)
+    all_users = [dict(row) for row in cursor.fetchall()]
+
+    from database import get_role_settings
+    role_settings = get_role_settings(conn=conn)
+    
     if is_postgres():
-        all_users = [dict(row) for row in cursor.fetchall()]
+        cursor.execute("""
+            SELECT user_id, id, lever_name, description, metric_unit, target_value, actual_outcome, 
+                   weightage_percent, section, parent_kra_id, self_rating_percent, manager_rating_percent 
+            FROM kras 
+            WHERE year = 2026
+        """)
+        all_kras = [dict(row) for row in cursor.fetchall()]
     else:
-        all_users = [dict(row) for row in cursor.fetchall()]
+        cursor.execute("""
+            SELECT user_id, id, lever_name, description, metric_unit, target_value, actual_outcome, 
+                   weightage_percent, section, parent_kra_id, self_rating_percent, manager_rating_percent 
+            FROM kras 
+            WHERE year = 2026
+        """)
+        all_kras = [dict(row) for row in cursor.fetchall()]
         
     conn.close()
 
+    kras_by_user = {}
+    for k in all_kras:
+        kras_by_user.setdefault(k["user_id"], []).append(k)
+
     for user in all_users:
-        score_data = compute_user_pms_score(user["id"])
+        uid = user["id"]
+        score_data = compute_user_pms_score(
+            uid, year=2026, conn=None, user_row=user, 
+            role_settings=role_settings, kras_list=kras_by_user.get(uid, [])
+        )
         user["composite_score"] = score_data["composite_score"]
         user["performance_band"] = score_data["performance_band"]
         user["grade"] = score_data["grade"]
