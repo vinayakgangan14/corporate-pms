@@ -13,12 +13,20 @@ DB_PATH = os.path.join(os.path.dirname(__file__), "pms.db")
 SUPABASE_URL = "postgresql://postgres.rstyhyuuyepfsgduqjvz:eJPNtR7j6XDQgMbj@aws-0-ap-northeast-2.pooler.supabase.com:6543/postgres"
 
 _active_driver_is_postgres = False
+_last_postgres_error = None
 
 def is_postgres():
     return _active_driver_is_postgres
 
+def get_db_status():
+    return {
+        "is_postgres": _active_driver_is_postgres,
+        "last_error": _last_postgres_error,
+        "active_engine": "PostgreSQL (Supabase)" if _active_driver_is_postgres else "SQLite"
+    }
+
 def get_db_connection():
-    global _active_driver_is_postgres
+    global _active_driver_is_postgres, _last_postgres_error
     env_url = os.environ.get("DATABASE_URL")
     if env_url and ("supabase.co" in env_url or "supabase.com" in env_url):
         db_url = env_url
@@ -34,8 +42,10 @@ def get_db_connection():
                 uri = uri.replace("postgres://", "postgresql://", 1)
             conn = psycopg2.connect(uri, cursor_factory=RealDictCursor)
             _active_driver_is_postgres = True
+            _last_postgres_error = None
             return conn
         except Exception as e:
+            _last_postgres_error = str(e)
             print(f"[DATABASE WARNING] Could not connect to PostgreSQL: {e}")
             print("[DATABASE WARNING] Falling back to SQLite engine for guaranteed uptime...")
             _active_driver_is_postgres = False

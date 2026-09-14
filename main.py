@@ -21,7 +21,8 @@ from database import (
     update_role_setting, 
     get_user_effective_weightages, 
     update_user_custom_weightages,
-    is_postgres
+    is_postgres,
+    get_db_status
 )
 from models import UserRole, KRASection, AppraisalStatus
 from pms_engine import (
@@ -117,6 +118,13 @@ def read_root():
             }
             return HTMLResponse(content=f.read(), headers=headers)
     return HTMLResponse("<h2>PMS Server Running. Static UI loading...</h2>")
+
+@app.get("/api/db-status")
+def get_database_status():
+    """Returns active database driver status and connection details."""
+    conn = get_db_connection()
+    conn.close()
+    return get_db_status()
 
 @app.get("/api/settings")
 def get_settings():
