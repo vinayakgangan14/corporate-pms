@@ -19,7 +19,12 @@ def is_postgres():
 
 def get_db_connection():
     global _active_driver_is_postgres
-    db_url = os.environ.get("DATABASE_URL") or SUPABASE_URL
+    env_url = os.environ.get("DATABASE_URL")
+    if env_url and ("supabase.co" in env_url or "supabase.com" in env_url):
+        db_url = env_url
+    else:
+        db_url = SUPABASE_URL
+
     if db_url and (db_url.startswith("postgresql://") or db_url.startswith("postgres://")):
         try:
             import psycopg2
