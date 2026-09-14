@@ -320,6 +320,13 @@ def get_user_pms_dashboard(user_id: int, year: int = 2026):
         cursor.execute("SELECT status, self_comments, manager_comments, md_comments FROM appraisals WHERE user_id = %s AND year = %s", (user_id, year))
         appraisal_row = cursor.fetchone()
         appraisal_meta = dict(appraisal_row) if appraisal_row else {"status": "DRAFT", "self_comments": "", "manager_comments": "", "md_comments": ""}
+
+        if user_info.get("role") == "MD":
+            cursor.execute("SELECT u.id, u.name, u.email, u.role, u.designation FROM users u WHERE u.id != %s ORDER BY u.id ASC", (user_id,))
+            direct_reports = [dict(row) for row in cursor.fetchall()]
+        else:
+            cursor.execute("SELECT u.id, u.name, u.email, u.role, u.designation FROM users u WHERE u.manager_id = %s ORDER BY u.id ASC", (user_id,))
+            direct_reports = [dict(row) for row in cursor.fetchall()]
     else:
         cursor.execute("""
             SELECT u.id, u.name, u.email, u.role, u.designation, u.manager_id, 
@@ -338,21 +345,31 @@ def get_user_pms_dashboard(user_id: int, year: int = 2026):
             
         user_info = dict(user_row)
         
-        cursor.execute("SELECT u.id, u.name, u.email, u.role, u.designation FROM users u WHERE u.manager_id = ?", (user_id,))
-        direct_reports = [dict(row) for row in cursor.fetchall()]
-        
         cursor.execute("SELECT status, self_comments, manager_comments, md_comments FROM appraisals WHERE user_id = ? AND year = ?", (user_id, year))
         appraisal_row = cursor.fetchone()
         appraisal_meta = dict(appraisal_row) if appraisal_row else {"status": "DRAFT", "self_comments": "", "manager_comments": "", "md_comments": ""}
 
-    downchain_ids = get_downchain_report_ids(user_id)
-    conn.close()
+        if user_info.get("role") == "MD":
+            cursor.execute("SELECT u.id, u.name, u.email, u.role, u.designation FROM users u WHERE u.id != ? ORDER BY u.id ASC", (user_id,))
+            direct_reports = [dict(row) for row in cursor.fetchall()]
+        else:
+            cursor.execute("SELECT u.id, u.name, u.email, u.role, u.designation FROM users u WHERE u.manager_id = ? ORDER BY u.id ASC", (user_id,))
+            direct_reports = [dict(row) for row in cursor.fetchall()]
 
-    pms_scores = compute_user_pms_score(user_id, year)
+    downchain_ids = get_downchain_report_ids(user_id)
 
     reports_pms = []
     for r in direct_reports:
         r_score = compute_user_pms_score(r["id"], year)
+        if is_postgres():
+            cursor.execute("SELECT status FROM appraisals WHERE user_id = %s AND year = %s", (r["id"], year))
+        else:
+            cursor.execute("SELECT status FROM appraisals WHERE user_id = ? AND year = ?", (r["id"], year))
+        a_row = cursor.fetchone()
+        status_val = "DRAFT"
+        if a_row:
+            status_val = a_row['status'] if is_postgres() else a_row[0]
+            
         reports_pms.append({
             "id": r["id"],
             "name": r["name"],
@@ -360,8 +377,11 @@ def get_user_pms_dashboard(user_id: int, year: int = 2026):
             "designation": r["designation"],
             "composite_score": r_score["composite_score"],
             "performance_band": r_score["performance_band"],
-            "grade": r_score["grade"]
+            "grade": r_score["grade"],
+            "appraisal_status": status_val
         })
+
+    conn.close()
 
     return {
         "user": user_info,

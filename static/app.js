@@ -473,42 +473,80 @@ function renderKraTables() {
     if (addSec1Btn) addSec1Btn.style.display = isFreezed ? "none" : "inline-flex";
     if (addSec2Btn) addSec2Btn.style.display = isFreezed ? "none" : "inline-flex";
 
-    // Dynamic Action Buttons
+    // Dynamic Action Buttons: Enforce persona permissions so employee never sees Approve/Reject buttons on their own page
     const actionBox = document.getElementById("appraisalActionButtonsBox");
+    const isViewingSelf = currentUserId === currentPmsData.user.id;
+
     if (actionBox) {
-        if (appStatus === "DRAFT" || appStatus === "REJECTED") {
-            actionBox.innerHTML = `
-                <button onclick="submitAppraisalForm('DRAFT')" class="w-full sm:w-auto px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold text-xs rounded-xl transition text-center">
-                    Save Draft
-                </button>
-                <button onclick="submitAppraisalForm('SUBMITTED_SELF')" class="w-full sm:w-auto px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5">
-                    <i data-lucide="send" class="w-4 h-4"></i> Submit Self Appraisal
-                </button>
-            `;
-        } else if (appStatus === "SUBMITTED_SELF") {
-            actionBox.innerHTML = `
-                <button onclick="submitAppraisalForm('MANAGER_APPROVED')" class="w-full sm:w-auto px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5">
-                    <i data-lucide="check-circle" class="w-4 h-4"></i> Level 1 Approve (Reporting Manager Suraj Pant)
-                </button>
-                <button onclick="submitAppraisalForm('REJECTED')" class="w-full sm:w-auto px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5">
-                    <i data-lucide="x-circle" class="w-4 h-4"></i> Disapprove / Reject (Return for Edits)
-                </button>
-            `;
-        } else if (appStatus === "MANAGER_APPROVED") {
-            actionBox.innerHTML = `
-                <button onclick="submitAppraisalForm('APPROVED')" class="w-full sm:w-auto px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5">
-                    <i data-lucide="crown" class="w-4 h-4"></i> MD Final Approve (Managing Director Rajesh Sarada)
-                </button>
-                <button onclick="submitAppraisalForm('REJECTED')" class="w-full sm:w-auto px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5">
-                    <i data-lucide="x-circle" class="w-4 h-4"></i> MD Disapprove / Reject (Return for Edits)
-                </button>
-            `;
-        } else if (appStatus === "APPROVED") {
-            actionBox.innerHTML = `
-                <div class="px-4 py-2 bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-xs rounded-xl flex items-center gap-1.5">
-                    <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600"></i> Appraisal Fully Approved & Signed Off by Managing Director
-                </div>
-            `;
+        if (isViewingSelf) {
+            // Employee viewing their own appraisal sheet
+            if (appStatus === "DRAFT" || appStatus === "REJECTED") {
+                actionBox.innerHTML = `
+                    <button onclick="submitAppraisalForm('DRAFT')" class="w-full sm:w-auto px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold text-xs rounded-xl transition text-center">
+                        Save Draft
+                    </button>
+                    <button onclick="submitAppraisalForm('SUBMITTED_SELF')" class="w-full sm:w-auto px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5">
+                        <i data-lucide="send" class="w-4 h-4"></i> Submit Self Appraisal
+                    </button>
+                `;
+            } else if (appStatus === "SUBMITTED_SELF") {
+                actionBox.innerHTML = `
+                    <div class="px-4 py-2 bg-sky-50 text-sky-800 border border-sky-200 font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs">
+                        <i data-lucide="clock" class="w-4 h-4 text-sky-600"></i> Submitted to Reporting Manager (Suraj Pant) — Pending Evaluation 🔒
+                    </div>
+                `;
+            } else if (appStatus === "MANAGER_APPROVED") {
+                actionBox.innerHTML = `
+                    <div class="px-4 py-2 bg-indigo-50 text-indigo-800 border border-indigo-200 font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs">
+                        <i data-lucide="shield-check" class="w-4 h-4 text-indigo-600"></i> Approved by Reporting Manager — Pending MD Final Sign-Off ⏳
+                    </div>
+                `;
+            } else if (appStatus === "APPROVED") {
+                actionBox.innerHTML = `
+                    <div class="px-4 py-2 bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs">
+                        <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600"></i> Fully Approved & Finalized by Managing Director (Rajesh Sarada) ✓
+                    </div>
+                `;
+            }
+        } else {
+            // Manager (Suraj Pant) or MD (Rajesh Sarada) reviewing downline report's appraisal sheet
+            if (appStatus === "SUBMITTED_SELF") {
+                actionBox.innerHTML = `
+                    <button onclick="submitAppraisalForm('MANAGER_APPROVED')" class="w-full sm:w-auto px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5">
+                        <i data-lucide="check-circle" class="w-4 h-4"></i> Level 1 Approve (Reporting Manager Suraj Pant)
+                    </button>
+                    <button onclick="submitAppraisalForm('REJECTED')" class="w-full sm:w-auto px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5">
+                        <i data-lucide="x-circle" class="w-4 h-4"></i> Disapprove / Reject (Return to Employee)
+                    </button>
+                `;
+            } else if (appStatus === "MANAGER_APPROVED") {
+                actionBox.innerHTML = `
+                    <button onclick="submitAppraisalForm('APPROVED')" class="w-full sm:w-auto px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5">
+                        <i data-lucide="crown" class="w-4 h-4"></i> MD Final Approve (Managing Director Rajesh Sarada)
+                    </button>
+                    <button onclick="submitAppraisalForm('REJECTED')" class="w-full sm:w-auto px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5">
+                        <i data-lucide="x-circle" class="w-4 h-4"></i> MD Disapprove / Reject (Return to Employee)
+                    </button>
+                `;
+            } else if (appStatus === "APPROVED") {
+                actionBox.innerHTML = `
+                    <div class="px-4 py-2 bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs">
+                        <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600"></i> Appraisal Fully Approved & Signed Off by Managing Director
+                    </div>
+                `;
+            } else if (appStatus === "REJECTED") {
+                actionBox.innerHTML = `
+                    <div class="px-4 py-2 bg-rose-50 text-rose-800 border border-rose-200 font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs">
+                        <i data-lucide="alert-triangle" class="w-4 h-4 text-rose-600"></i> Disapproved & Returned to Employee for Edits ⚠️
+                    </div>
+                `;
+            } else {
+                actionBox.innerHTML = `
+                    <div class="px-4 py-2 bg-slate-100 text-slate-700 border border-slate-200 font-bold text-xs rounded-xl">
+                        Draft Mode (Employee has not submitted self appraisal yet)
+                    </div>
+                `;
+            }
         }
     }
 
@@ -895,26 +933,40 @@ function renderTeamMembersTable() {
     const reports = currentPmsData.direct_reports || [];
 
     if (reports.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-400 italic text-xs">No direct reports under current persona. Switch persona to Manager, HOD, GM, or MD.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-slate-400 italic text-xs">No direct reports or pending submissions under current persona. Switch persona to Manager (Suraj Pant), GM, or MD (Rajesh Sarada).</td></tr>`;
         return;
     }
 
-    tbody.innerHTML = reports.map(r => `
-        <tr class="hover:bg-slate-50 transition">
-            <td class="p-2.5 font-bold text-slate-900">${r.name}</td>
-            <td class="p-2.5 font-semibold text-sky-700">${r.role}</td>
-            <td class="p-2.5 text-slate-600">${r.designation}</td>
-            <td class="p-2.5 text-right font-extrabold text-slate-900">${r.composite_score.toFixed(1)}%</td>
-            <td class="p-2.5 text-center">
-                <span class="px-2 py-0.5 text-[10px] font-bold rounded bg-emerald-100 text-emerald-800">Grade ${r.grade}</span>
-            </td>
-            <td class="p-2.5 text-center">
-                <button onclick="switchActiveUser(${r.id})" class="px-2.5 py-1 bg-sky-600 hover:bg-sky-700 text-white font-semibold text-[11px] rounded-lg transition">
-                    Inspect
-                </button>
-            </td>
-        </tr>
-    `).join("");
+    const statusBadgeMap = {
+        DRAFT: '<span class="px-2 py-0.5 text-[10px] font-bold rounded bg-amber-100 text-amber-800 border border-amber-300">DRAFT</span>',
+        SUBMITTED_SELF: '<span class="px-2 py-0.5 text-[10px] font-bold rounded bg-sky-100 text-sky-800 border border-sky-300">SUBMITTED TO MANAGER 🔒</span>',
+        MANAGER_APPROVED: '<span class="px-2 py-0.5 text-[10px] font-bold rounded bg-indigo-100 text-indigo-800 border border-indigo-300">MANAGER APPROVED ⏳</span>',
+        APPROVED: '<span class="px-2 py-0.5 text-[10px] font-bold rounded bg-emerald-100 text-emerald-800 border border-emerald-300">FULLY APPROVED ✓</span>',
+        REJECTED: '<span class="px-2 py-0.5 text-[10px] font-bold rounded bg-rose-100 text-rose-800 border border-rose-300">DISAPPROVED ⚠️</span>'
+    };
+
+    tbody.innerHTML = reports.map(r => {
+        const stBadge = statusBadgeMap[r.appraisal_status] || `<span class="px-2 py-0.5 text-[10px] font-bold rounded bg-slate-100 text-slate-700">${r.appraisal_status}</span>`;
+        
+        return `
+            <tr class="hover:bg-slate-50 transition">
+                <td class="p-2.5 font-bold text-slate-900">${r.name}</td>
+                <td class="p-2.5 font-semibold text-sky-700">${r.role}</td>
+                <td class="p-2.5 text-slate-600">${r.designation}</td>
+                <td class="p-2.5 text-center">${stBadge}</td>
+                <td class="p-2.5 text-right font-extrabold text-slate-900">${r.composite_score.toFixed(1)}%</td>
+                <td class="p-2.5 text-center">
+                    <span class="px-2 py-0.5 text-[10px] font-bold rounded bg-emerald-100 text-emerald-800">Grade ${r.grade}</span>
+                </td>
+                <td class="p-2.5 text-center">
+                    <button onclick="switchActiveUser(${r.id})" class="px-3 py-1 bg-sky-600 hover:bg-sky-700 text-white font-semibold text-[11px] rounded-lg transition shadow-xs inline-flex items-center gap-1">
+                        <i data-lucide="eye" class="w-3.5 h-3.5"></i> Review KRA Sheet
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join("");
+    lucide.createIcons();
 }
 
 async function fetchAnalytics() {

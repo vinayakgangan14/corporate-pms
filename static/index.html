@@ -165,7 +165,7 @@
                 <i data-lucide="sitemap" class="w-4 h-4"></i> Org Hierarchy & Goals
             </button>
             <button onclick="switchTab('teamTab')" id="tabBtnTeam" class="py-3 text-xs sm:text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap">
-                <i data-lucide="users" class="w-4 h-4"></i> Direct Reports Review
+                <i data-lucide="inbox" class="w-4 h-4"></i> Review Submissions & Approvals Inbox
             </button>
             <button onclick="switchTab('adminTab')" id="tabBtnAdmin" class="py-3 text-xs sm:text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap">
                 <i data-lucide="settings" class="w-4 h-4"></i> Admin & Weightage Config
@@ -370,25 +370,26 @@
             </div>
         </div>
 
-        <!-- TAB 3: DIRECT REPORTS REVIEW -->
+        <!-- TAB 3: REVIEW SUBMISSIONS & APPROVALS INBOX -->
         <div id="teamTab" class="hidden space-y-3 sm:space-y-6">
             <div class="bg-white rounded-xl sm:rounded-2xl border border-slate-200 p-3.5 sm:p-6 shadow-sm space-y-3">
                 <div class="flex justify-between items-center">
                     <div>
                         <h2 class="text-xs sm:text-lg font-bold text-slate-900 flex items-center gap-1.5">
-                            <i data-lucide="users" class="w-4 h-4 sm:w-5 sm:h-5 text-sky-600 flex-shrink-0"></i> Direct Reports Review
+                            <i data-lucide="inbox" class="w-4 h-4 sm:w-5 sm:h-5 text-sky-600 flex-shrink-0"></i> Review Submissions & Approvals Inbox
                         </h2>
-                        <p class="text-[10px] text-slate-500">Supervisors & Managers can review down-chain team members here.</p>
+                        <p class="text-[10px] text-slate-500">Reporting Managers (Suraj Pant) and Managing Director (Rajesh Sarada) can evaluate pending downline KRA appraisals here.</p>
                     </div>
                 </div>
 
                 <div class="overflow-x-auto custom-scrollbar">
-                    <table class="w-full text-left border-collapse text-xs min-w-[500px]">
+                    <table class="w-full text-left border-collapse text-xs min-w-[600px]">
                         <thead>
                             <tr class="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
                                 <th class="p-2.5">Team Member</th>
                                 <th class="p-2.5">Role</th>
                                 <th class="p-2.5">Designation</th>
+                                <th class="p-2.5 text-center">Appraisal Status</th>
                                 <th class="p-2.5 text-right">Composite Score</th>
                                 <th class="p-2.5 text-center">Grade</th>
                                 <th class="p-2.5 text-center">Action</th>
