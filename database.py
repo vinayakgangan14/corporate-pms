@@ -10,7 +10,7 @@ from typing import Optional, List, Dict, Any
 from models import CREATE_TABLES_SQL_SQLITE, CREATE_TABLES_SQL_PG
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "pms.db")
-SUPABASE_URL = "postgresql://postgres.rstyhyuuyepfsgduqjvz:eJPNtR7j6XDQgMbj@aws-0-ap-northeast-2.pooler.supabase.com:6543/postgres"
+SUPABASE_URL = "postgresql://postgres.rstyhyuuyepfsgduqjvz:eJPNtR7j6XDQgMbj@aws-0-ap-northeast-2.pooler.supabase.com:6543/postgres?sslmode=require"
 
 _active_driver_is_postgres = False
 _last_postgres_error = None
@@ -40,7 +40,9 @@ def get_db_connection():
             uri = db_url
             if uri.startswith("postgres://"):
                 uri = uri.replace("postgres://", "postgresql://", 1)
-            conn = psycopg2.connect(uri, cursor_factory=RealDictCursor)
+            if "sslmode" not in uri:
+                uri += "&sslmode=require" if "?" in uri else "?sslmode=require"
+            conn = psycopg2.connect(uri, cursor_factory=RealDictCursor, connect_timeout=10)
             _active_driver_is_postgres = True
             _last_postgres_error = None
             return conn
@@ -71,6 +73,15 @@ def init_db():
             except Exception as me:
                 conn.rollback()
                 print(f"[DATABASE MIGRATION NOTICE] Postgres columns already exist or migrated: {me}")
+            
+            # Sync Postgres primary key sequence counters to highest ID
+            try:
+                cursor.execute("SELECT setval('departments_id_seq', (SELECT COALESCE(MAX(id), 1) FROM departments));")
+                cursor.execute("SELECT setval('users_id_seq', (SELECT COALESCE(MAX(id), 1) FROM users));")
+                conn.commit()
+            except Exception as se:
+                conn.rollback()
+                print(f"[DATABASE NOTICE] Postgres sequence sync notice: {se}")
         else:
             cursor.executescript(CREATE_TABLES_SQL_SQLITE)
             conn.commit()
