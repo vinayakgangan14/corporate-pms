@@ -224,6 +224,9 @@ def get_user_effective_weightages(user_id: int, conn=None, role_settings=None, u
     Prioritizes individual user overrides (sec1_weight, sec2_weight), then position/role default, then 70/30 system fallback.
     Accepts optional pre-fetched conn, role_settings, or user_row for zero N+1 database connection overhead.
     """
+    should_close = False
+    active_conn = conn
+    
     if user_row is not None:
         if isinstance(user_row, dict):
             role = user_row.get('role', 'EMPLOYEE')
@@ -234,11 +237,10 @@ def get_user_effective_weightages(user_id: int, conn=None, role_settings=None, u
             sec1_override = user_row['sec1_weight'] if is_postgres() else user_row[6]
             sec2_override = user_row['sec2_weight'] if is_postgres() else user_row[7]
     else:
-        should_close = False
-        if conn is None:
-            conn = get_db_connection()
+        if active_conn is None:
+            active_conn = get_db_connection()
             should_close = True
-        cursor = conn.cursor()
+        cursor = active_conn.cursor()
         
         if is_postgres():
             cursor.execute("SELECT role, sec1_weight, sec2_weight FROM users WHERE id = %s", (user_id,))
@@ -247,10 +249,9 @@ def get_user_effective_weightages(user_id: int, conn=None, role_settings=None, u
             cursor.execute("SELECT role, sec1_weight, sec2_weight FROM users WHERE id = ?", (user_id,))
             row = cursor.fetchone()
             
-        if should_close:
-            conn.close()
-            
         if not row:
+            if should_close and active_conn:
+                active_conn.close()
             return {"section1_weight": 70.0, "section2_weight": 30.0, "source": "default", "role": "EMPLOYEE"}
             
         role = row['role'] if is_postgres() else row[0]
@@ -258,6 +259,8 @@ def get_user_effective_weightages(user_id: int, conn=None, role_settings=None, u
         sec2_override = row['sec2_weight'] if is_postgres() else row[2]
     
     if sec1_override is not None and sec2_override is not None:
+        if should_close and active_conn:
+            active_conn.close()
         return {
             "section1_weight": float(sec1_override),
             "section2_weight": float(sec2_override),
@@ -266,8 +269,11 @@ def get_user_effective_weightages(user_id: int, conn=None, role_settings=None, u
         }
         
     if role_settings is None:
-        role_settings = get_role_settings(conn=conn if 'conn' in locals() and conn else None)
+        role_settings = get_role_settings(conn=active_conn)
         
+    if should_close and active_conn:
+        active_conn.close()
+
     role_weight = role_settings.get(role, {"section1_weight": 70.0, "section2_weight": 30.0})
     
     return {
