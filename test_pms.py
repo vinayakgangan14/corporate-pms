@@ -38,17 +38,17 @@ def test_pms_calculation_and_hierarchy():
     cursor.execute("SELECT id FROM users WHERE email = 'md@company.com'")
     md_user = cursor.fetchone()
     assert md_user is not None, "MD user seed not found"
-    md_id = md_user[0]
+    md_id = md_user['id'] if isinstance(md_user, dict) else md_user[0]
     
     cursor.execute("SELECT id FROM users WHERE email = 'gm.ops@company.com'")
     gm_user = cursor.fetchone()
     assert gm_user is not None, "GM user seed not found"
-    gm_id = gm_user[0]
+    gm_id = gm_user['id'] if isinstance(gm_user, dict) else gm_user[0]
 
     cursor.execute("SELECT id FROM users WHERE email = 'emp.john@company.com'")
     emp_user = cursor.fetchone()
     assert emp_user is not None, "Employee user seed not found"
-    emp_id = emp_user[0]
+    emp_id = emp_user['id'] if isinstance(emp_user, dict) else emp_user[0]
     conn.close()
 
     md_pms = compute_user_pms_score(md_id, 2026)

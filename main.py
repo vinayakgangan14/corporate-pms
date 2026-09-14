@@ -218,14 +218,6 @@ def list_users():
 
     return users
 
-    for u in users:
-        score_data = compute_user_pms_score(u["id"])
-        u["composite_score"] = score_data["composite_score"]
-        u["performance_band"] = score_data["performance_band"]
-        u["grade"] = score_data["grade"]
-
-    return users
-
 @app.post("/api/users")
 def create_user(user: CreateUserSchema):
     conn = get_db_connection()

@@ -10,7 +10,7 @@ from typing import Optional, List, Dict, Any
 from models import CREATE_TABLES_SQL_SQLITE, CREATE_TABLES_SQL_PG
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "pms.db")
-DATABASE_URL = os.environ.get("DATABASE_URL")
+SUPABASE_URL = "postgresql://postgres.rstyhyuuyepfsgduqjvz:eJPNtR7j6XDQgMbj@aws-0-ap-northeast-2.pooler.supabase.com:6543/postgres"
 
 _active_driver_is_postgres = False
 
@@ -19,11 +19,12 @@ def is_postgres():
 
 def get_db_connection():
     global _active_driver_is_postgres
-    if DATABASE_URL and (DATABASE_URL.startswith("postgresql://") or DATABASE_URL.startswith("postgres://")):
+    db_url = os.environ.get("DATABASE_URL") or SUPABASE_URL
+    if db_url and (db_url.startswith("postgresql://") or db_url.startswith("postgres://")):
         try:
             import psycopg2
             from psycopg2.extras import RealDictCursor
-            uri = DATABASE_URL
+            uri = db_url
             if uri.startswith("postgres://"):
                 uri = uri.replace("postgres://", "postgresql://", 1)
             conn = psycopg2.connect(uri, cursor_factory=RealDictCursor)
@@ -325,6 +326,7 @@ def seed_data_if_empty():
             ("David Miller", "hod.eng@company.com", "HOD", "HOD - Enterprise Architecture", "ENG", "gm.eng@company.com"),
             ("Rachel Green", "mgr.ops@company.com", "MANAGER", "Manager - Operational Excellence", "OPS", "hod.fin@company.com"),
             ("Kevin Wright", "mgr.dev@company.com", "MANAGER", "Manager - Software Development", "ENG", "hod.eng@company.com"),
+            ("Chetan Sundan", "chetan.sundan@company.com", "MANAGER", "Store Manager", "SCM", "gm.ops@company.com"),
             ("Carlos Mendez", "sup.ops@company.com", "SUPERVISOR", "Supervisor - Process Audit", "OPS", "mgr.ops@company.com"),
             ("Anita Desai", "sup.dev@company.com", "SUPERVISOR", "Supervisor - Platform Engineering", "ENG", "mgr.dev@company.com"),
             ("John Doe", "emp.john@company.com", "EMPLOYEE", "Senior Process Analyst", "OPS", "sup.ops@company.com"),
