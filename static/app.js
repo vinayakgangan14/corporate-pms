@@ -235,9 +235,14 @@ function renderAllUsersPersonaTable() {
                         '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-rose-900/80 text-rose-300 border border-rose-700">Error ⚠</span>'}
                 </td>
                 <td class="py-2.5 px-3 text-right">
-                    <button onclick="handleSaveTableRowPersonaWeight(${u.id})" class="px-3 py-1 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs rounded-lg shadow transition inline-flex items-center gap-1">
-                        <i data-lucide="save" class="w-3.5 h-3.5"></i> Save
-                    </button>
+                    <div class="flex justify-end gap-1.5">
+                        <button onclick="handleSaveTableRowPersonaWeight(${u.id})" class="px-2.5 py-1 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs rounded-lg shadow transition inline-flex items-center gap-1">
+                            <i data-lucide="save" class="w-3.5 h-3.5"></i> Save
+                        </button>
+                        <button onclick="handleDeleteUser(${u.id}, '${u.name}')" class="px-2 py-1 bg-rose-600/80 hover:bg-rose-500 text-white font-bold text-xs rounded-lg shadow transition inline-flex items-center gap-1" title="Delete employee from organization">
+                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Delete
+                        </button>
+                    </div>
                 </td>
             </tr>
         `;
@@ -280,6 +285,30 @@ async function handleSaveTableRowPersonaWeight(userId) {
         }
     } catch (err) {
         console.error("Error saving user weightage:", err);
+    }
+}
+
+async function handleDeleteUser(userId, userName) {
+    if (!confirm(`Are you sure you want to remove '${userName}' from the organization?\n\nThis will remove their profile and associated KRAs from cloud Supabase.`)) {
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/users/${userId}`, {
+            method: "DELETE"
+        });
+        const data = await res.json();
+        if (res.ok) {
+            alert(data.message);
+            await fetchUsers();
+            if (currentUserId === userId && allUsers.length > 0) {
+                switchActiveUser(allUsers[0].id);
+            }
+        } else {
+            alert("Delete Error: " + data.detail);
+        }
+    } catch (err) {
+        console.error("Error deleting user:", err);
     }
 }
 

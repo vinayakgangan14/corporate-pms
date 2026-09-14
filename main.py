@@ -253,6 +253,30 @@ def create_user(user: CreateUserSchema):
         conn.close()
         raise HTTPException(status_code=400, detail=f"User creation failed: {e}")
 
+@app.delete("/api/users/{user_id}")
+def delete_user(user_id: int):
+    """Administrator endpoint to remove an employee when they leave the organization."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        if is_postgres():
+            cursor.execute("UPDATE users SET manager_id = NULL WHERE manager_id = %s", (user_id,))
+            cursor.execute("DELETE FROM kras WHERE user_id = %s", (user_id,))
+            cursor.execute("DELETE FROM appraisals WHERE user_id = %s", (user_id,))
+            cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
+        else:
+            cursor.execute("UPDATE users SET manager_id = NULL WHERE manager_id = ?", (user_id,))
+            cursor.execute("DELETE FROM kras WHERE user_id = ?", (user_id,))
+            cursor.execute("DELETE FROM appraisals WHERE user_id = ?", (user_id,))
+            cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+            
+        conn.commit()
+        conn.close()
+        return {"status": "success", "message": f"Employee #{user_id} and associated records successfully removed."}
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=400, detail=f"Failed to delete employee: {e}")
+
 @app.get("/api/departments")
 def list_departments():
     conn = get_db_connection()
