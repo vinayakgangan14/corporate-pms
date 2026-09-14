@@ -382,6 +382,7 @@ def get_user_pms_dashboard(user_id: int, year: int = 2026):
             direct_reports = [dict(row) for row in cursor.fetchall()]
 
     downchain_ids = get_downchain_report_ids(user_id)
+    pms_scores = compute_user_pms_score(user_id, year)
 
     reports_pms = []
     for r in direct_reports:
