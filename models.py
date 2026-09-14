@@ -119,7 +119,7 @@ CREATE TABLE IF NOT EXISTS users (
     role VARCHAR(50) NOT NULL,
     designation VARCHAR(255) NOT NULL,
     department_id INTEGER REFERENCES departments(id),
-    manager_id INTEGER REFERENCES users(id),
+    manager_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     sec1_weight DOUBLE PRECISION,
     sec2_weight DOUBLE PRECISION,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -127,7 +127,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS kras (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(id),
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     year INTEGER NOT NULL,
     section VARCHAR(50) NOT NULL,
     lever_name VARCHAR(255) NOT NULL,
@@ -136,7 +136,7 @@ CREATE TABLE IF NOT EXISTS kras (
     target_value DOUBLE PRECISION NOT NULL,
     actual_outcome DOUBLE PRECISION DEFAULT 0.0,
     weightage_percent DOUBLE PRECISION NOT NULL,
-    parent_kra_id INTEGER REFERENCES kras(id),
+    parent_kra_id INTEGER REFERENCES kras(id) ON DELETE CASCADE,
     self_rating_percent DOUBLE PRECISION DEFAULT 0.0,
     manager_rating_percent DOUBLE PRECISION DEFAULT 0.0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -144,7 +144,7 @@ CREATE TABLE IF NOT EXISTS kras (
 
 CREATE TABLE IF NOT EXISTS appraisals (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(id),
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     year INTEGER NOT NULL,
     status VARCHAR(50) NOT NULL DEFAULT 'DRAFT',
     present_year_score DOUBLE PRECISION DEFAULT 0.0,
