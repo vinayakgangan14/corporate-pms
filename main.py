@@ -371,106 +371,134 @@ def list_departments():
 def get_hierarchy():
     return get_org_hierarchy_tree()
 
+import threading
+import time
+
+def keep_alive_ping():
+    """Background thread that pings server endpoint every 4 minutes to prevent Render free instance sleeping."""
+    while True:
+        try:
+            time.sleep(240)
+            render_url = os.environ.get("RENDER_EXTERNAL_URL", "http://127.0.0.1:8000")
+            import urllib.request
+            urllib.request.urlopen(f"{render_url}/api/db-status", timeout=5)
+        except Exception:
+            pass
+
+@app.on_event("startup")
+def startup_db():
+    init_db()
+    t = threading.Thread(target=keep_alive_ping, daemon=True)
+    t.start()
+
 @app.get("/api/users/{user_id}/pms")
 def get_user_pms_dashboard(user_id: int, year: int = 2026):
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    if is_postgres():
-        cursor.execute("""
-            SELECT u.id, u.name, u.email, u.role, u.designation, u.manager_id, 
-                   m.name as manager_name, m.email as manager_email, m.role as manager_role,
-                   d.name as department_name
-            FROM users u
-            LEFT JOIN users m ON u.manager_id = m.id
-            LEFT JOIN departments d ON u.department_id = d.id
-            WHERE u.id = %s
-        """, (user_id,))
-        user_row = cursor.fetchone()
-        
-        if not user_row:
-            conn.close()
-            raise HTTPException(status_code=404, detail="User not found")
-            
-        user_info = dict(user_row)
-        
-        cursor.execute("SELECT u.id, u.name, u.email, u.role, u.designation FROM users u WHERE u.manager_id = %s", (user_id,))
-        direct_reports = [dict(row) for row in cursor.fetchall()]
-        
-        cursor.execute("SELECT status, self_comments, manager_comments, md_comments FROM appraisals WHERE user_id = %s AND year = %s", (user_id, year))
-        appraisal_row = cursor.fetchone()
-        appraisal_meta = dict(appraisal_row) if appraisal_row else {"status": "DRAFT", "self_comments": "", "manager_comments": "", "md_comments": ""}
-
-        if user_info.get("role") == "MD":
-            cursor.execute("SELECT u.id, u.name, u.email, u.role, u.designation FROM users u WHERE u.id != %s ORDER BY u.id ASC", (user_id,))
-            direct_reports = [dict(row) for row in cursor.fetchall()]
-        else:
-            cursor.execute("SELECT u.id, u.name, u.email, u.role, u.designation FROM users u WHERE u.manager_id = %s ORDER BY u.id ASC", (user_id,))
-            direct_reports = [dict(row) for row in cursor.fetchall()]
-    else:
-        cursor.execute("""
-            SELECT u.id, u.name, u.email, u.role, u.designation, u.manager_id, 
-                   m.name as manager_name, m.email as manager_email, m.role as manager_role,
-                   d.name as department_name
-            FROM users u
-            LEFT JOIN users m ON u.manager_id = m.id
-            LEFT JOIN departments d ON u.department_id = d.id
-            WHERE u.id = ?
-        """, (user_id,))
-        user_row = cursor.fetchone()
-        
-        if not user_row:
-            conn.close()
-            raise HTTPException(status_code=404, detail="User not found")
-            
-        user_info = dict(user_row)
-        
-        cursor.execute("SELECT status, self_comments, manager_comments, md_comments FROM appraisals WHERE user_id = ? AND year = ?", (user_id, year))
-        appraisal_row = cursor.fetchone()
-        appraisal_meta = dict(appraisal_row) if appraisal_row else {"status": "DRAFT", "self_comments": "", "manager_comments": "", "md_comments": ""}
-
-        if user_info.get("role") == "MD":
-            cursor.execute("SELECT u.id, u.name, u.email, u.role, u.designation FROM users u WHERE u.id != ? ORDER BY u.id ASC", (user_id,))
-            direct_reports = [dict(row) for row in cursor.fetchall()]
-        else:
-            cursor.execute("SELECT u.id, u.name, u.email, u.role, u.designation FROM users u WHERE u.manager_id = ? ORDER BY u.id ASC", (user_id,))
-            direct_reports = [dict(row) for row in cursor.fetchall()]
-
-    downchain_ids = get_downchain_report_ids(user_id)
-    pms_scores = compute_user_pms_score(user_id, year)
-
-    reports_pms = []
-    for r in direct_reports:
-        r_score = compute_user_pms_score(r["id"], year)
+    try:
         if is_postgres():
-            cursor.execute("SELECT status FROM appraisals WHERE user_id = %s AND year = %s", (r["id"], year))
-        else:
-            cursor.execute("SELECT status FROM appraisals WHERE user_id = ? AND year = ?", (r["id"], year))
-        a_row = cursor.fetchone()
-        status_val = "DRAFT"
-        if a_row:
-            status_val = a_row['status'] if is_postgres() else a_row[0]
+            cursor.execute("""
+                SELECT u.id, u.name, u.email, u.role, u.designation, u.manager_id, 
+                       m.name as manager_name, m.email as manager_email, m.role as manager_role,
+                       d.name as department_name
+                FROM users u
+                LEFT JOIN users m ON u.manager_id = m.id
+                LEFT JOIN departments d ON u.department_id = d.id
+                WHERE u.id = %s
+            """, (user_id,))
+            user_row = cursor.fetchone()
             
-        reports_pms.append({
-            "id": r["id"],
-            "name": r["name"],
-            "role": r["role"],
-            "designation": r["designation"],
-            "composite_score": r_score["composite_score"],
-            "performance_band": r_score["performance_band"],
-            "grade": r_score["grade"],
-            "appraisal_status": status_val
-        })
+            if not user_row:
+                conn.close()
+                raise HTTPException(status_code=404, detail="User not found")
+                
+            user_info = dict(user_row)
+            
+            cursor.execute("SELECT status, self_comments, manager_comments, md_comments FROM appraisals WHERE user_id = %s AND year = %s", (user_id, year))
+            appraisal_row = cursor.fetchone()
+            appraisal_meta = dict(appraisal_row) if appraisal_row else {"status": "DRAFT", "self_comments": "", "manager_comments": "", "md_comments": ""}
 
-    conn.close()
+            if user_info.get("role") == "MD":
+                cursor.execute("""
+                    SELECT u.id, u.name, u.email, u.role, u.designation, COALESCE(a.status, 'DRAFT') as appraisal_status
+                    FROM users u
+                    LEFT JOIN appraisals a ON u.id = a.user_id AND a.year = %s
+                    WHERE u.id != %s ORDER BY u.id ASC
+                """, (year, user_id))
+            else:
+                cursor.execute("""
+                    SELECT u.id, u.name, u.email, u.role, u.designation, COALESCE(a.status, 'DRAFT') as appraisal_status
+                    FROM users u
+                    LEFT JOIN appraisals a ON u.id = a.user_id AND a.year = %s
+                    WHERE u.manager_id = %s ORDER BY u.id ASC
+                """, (year, user_id))
+            direct_reports = [dict(row) for row in cursor.fetchall()]
+        else:
+            cursor.execute("""
+                SELECT u.id, u.name, u.email, u.role, u.designation, u.manager_id, 
+                       m.name as manager_name, m.email as manager_email, m.role as manager_role,
+                       d.name as department_name
+                FROM users u
+                LEFT JOIN users m ON u.manager_id = m.id
+                LEFT JOIN departments d ON u.department_id = d.id
+                WHERE u.id = ?
+            """, (user_id,))
+            user_row = cursor.fetchone()
+            
+            if not user_row:
+                conn.close()
+                raise HTTPException(status_code=404, detail="User not found")
+                
+            user_info = dict(user_row)
+            
+            cursor.execute("SELECT status, self_comments, manager_comments, md_comments FROM appraisals WHERE user_id = ? AND year = ?", (user_id, year))
+            appraisal_row = cursor.fetchone()
+            appraisal_meta = dict(appraisal_row) if appraisal_row else {"status": "DRAFT", "self_comments": "", "manager_comments": "", "md_comments": ""}
 
-    return {
-        "user": user_info,
-        "appraisal_status": appraisal_meta,
-        "pms": pms_scores,
-        "direct_reports": reports_pms,
-        "downchain_total_count": len(downchain_ids)
-    }
+            if user_info.get("role") == "MD":
+                cursor.execute("""
+                    SELECT u.id, u.name, u.email, u.role, u.designation, COALESCE(a.status, 'DRAFT') as appraisal_status
+                    FROM users u
+                    LEFT JOIN appraisals a ON u.id = a.user_id AND a.year = ?
+                    WHERE u.id != ? ORDER BY u.id ASC
+                """, (year, user_id))
+            else:
+                cursor.execute("""
+                    SELECT u.id, u.name, u.email, u.role, u.designation, COALESCE(a.status, 'DRAFT') as appraisal_status
+                    FROM users u
+                    LEFT JOIN appraisals a ON u.id = a.user_id AND a.year = ?
+                    WHERE u.manager_id = ? ORDER BY u.id ASC
+                """, (year, user_id))
+            direct_reports = [dict(row) for row in cursor.fetchall()]
+
+        downchain_ids = get_downchain_report_ids(user_id)
+        role_settings = get_role_settings(conn=conn)
+        pms_scores = compute_user_pms_score(user_id, year, conn=conn, role_settings=role_settings)
+
+        reports_pms = []
+        for r in direct_reports:
+            r_score = compute_user_pms_score(r["id"], year, conn=conn, role_settings=role_settings)
+            reports_pms.append({
+                "id": r["id"],
+                "name": r["name"],
+                "role": r["role"],
+                "designation": r["designation"],
+                "composite_score": r_score["composite_score"],
+                "performance_band": r_score["performance_band"],
+                "grade": r_score["grade"],
+                "appraisal_status": r["appraisal_status"]
+            })
+
+        return {
+            "user": user_info,
+            "appraisal_status": appraisal_meta,
+            "pms": pms_scores,
+            "direct_reports": reports_pms,
+            "downchain_total_count": len(downchain_ids)
+        }
+    finally:
+        conn.close()
 
 @app.post("/api/kras")
 def create_kra(kra: CreateKRASchema):

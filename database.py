@@ -14,8 +14,22 @@ from models import CREATE_TABLES_SQL_SQLITE, CREATE_TABLES_SQL_PG
 DB_PATH = os.path.join(os.path.dirname(__file__), "pms.db")
 SUPABASE_URL = "postgresql://postgres.rstyhyuuyepfsgduqjvz:eJPNtR7j6XDQgMbj@aws-0-ap-northeast-2.pooler.supabase.com:6543/postgres?sslmode=require"
 
+import time
+
 _active_driver_is_postgres = False
 _last_postgres_error = None
+_pg_pool = None
+
+_role_settings_cache = None
+_role_settings_cache_time = 0
+
+_system_settings_cache = None
+_system_settings_cache_time = 0
+
+def invalidate_settings_caches():
+    global _role_settings_cache, _system_settings_cache
+    _role_settings_cache = None
+    _system_settings_cache = None
 
 def is_postgres():
     return _active_driver_is_postgres
@@ -70,8 +84,45 @@ def generate_username(name: str, email: str) -> str:
     cleaned = "".join(c for c in base if c.isalnum() or c in "._-")
     return cleaned or "user"
 
+class PooledConnectionWrapper:
+    """Wrapper around a psycopg2 pooled connection that returns it to the pool on close()."""
+    def __init__(self, conn, pool):
+        self._conn = conn
+        self._pool = pool
+        self.closed = False
+
+    def cursor(self, *args, **kwargs):
+        return self._conn.cursor(*args, **kwargs)
+
+    def commit(self):
+        return self._conn.commit()
+
+    def rollback(self):
+        return self._conn.rollback()
+
+    def close(self):
+        if not self.closed and self._pool:
+            try:
+                self._pool.putconn(self._conn)
+            except Exception:
+                pass
+            self.closed = True
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type:
+            self.rollback()
+        else:
+            self.commit()
+        self.close()
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
 def get_db_connection():
-    global _active_driver_is_postgres, _last_postgres_error
+    global _active_driver_is_postgres, _last_postgres_error, _pg_pool
     env_url = os.environ.get("DATABASE_URL")
     if env_url and ("supabase.co" in env_url or "supabase.com" in env_url):
         db_url = env_url
@@ -81,19 +132,31 @@ def get_db_connection():
     if db_url and (db_url.startswith("postgresql://") or db_url.startswith("postgres://")):
         try:
             import psycopg2
+            from psycopg2.pool import ThreadedConnectionPool
             from psycopg2.extras import RealDictCursor
+
             uri = db_url
             if uri.startswith("postgres://"):
                 uri = uri.replace("postgres://", "postgresql://", 1)
             if "sslmode" not in uri:
                 uri += "&sslmode=require" if "?" in uri else "?sslmode=require"
-            conn = psycopg2.connect(uri, cursor_factory=RealDictCursor, connect_timeout=10)
+
+            if _pg_pool is None or getattr(_pg_pool, 'closed', False):
+                _pg_pool = ThreadedConnectionPool(
+                    minconn=2,
+                    maxconn=15,
+                    dsn=uri,
+                    cursor_factory=RealDictCursor
+                )
+                print("[DATABASE POOL] PostgreSQL ThreadedConnectionPool initialized (min=2, max=15).")
+
+            raw_conn = _pg_pool.getconn()
             _active_driver_is_postgres = True
             _last_postgres_error = None
-            return conn
+            return PooledConnectionWrapper(raw_conn, _pg_pool)
         except Exception as e:
             _last_postgres_error = str(e)
-            print(f"[DATABASE WARNING] Could not connect to PostgreSQL: {e}")
+            print(f"[DATABASE WARNING] Could not connect to PostgreSQL pool: {e}")
             print("[DATABASE WARNING] Falling back to SQLite engine for guaranteed uptime...")
             _active_driver_is_postgres = False
 
@@ -246,7 +309,12 @@ def init_default_role_settings():
     conn.close()
 
 def get_role_settings(conn=None) -> dict:
-    """Returns mapping of all roles to their configured section weightages."""
+    """Returns mapping of all roles to their configured section weightages with 60s TTL cache."""
+    global _role_settings_cache, _role_settings_cache_time
+    now = time.time()
+    if conn is None and _role_settings_cache is not None and (now - _role_settings_cache_time < 60):
+        return _role_settings_cache
+
     should_close = False
     if conn is None:
         conn = get_db_connection()
@@ -285,6 +353,8 @@ def get_role_settings(conn=None) -> dict:
         if k not in results:
             results[k] = v
             
+    _role_settings_cache = results
+    _role_settings_cache_time = now
     return results
 
 def update_role_setting(role_name: str, sec1: float, sec2: float):
@@ -309,6 +379,7 @@ def update_role_setting(role_name: str, sec1: float, sec2: float):
         
     conn.commit()
     conn.close()
+    invalidate_settings_caches()
 
 def get_user_effective_weightages(user_id: int, conn=None, role_settings=None, user_row=None) -> dict:
     """
